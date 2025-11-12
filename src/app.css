@@ -49,4 +49,8 @@
   input[type="search"]::-webkit-search-cancel-button {
     display: none;
   }
+
+  body {
+    @apply bg-platinum text-shadow-grey dark:bg-shadow-grey dark:text-platinum transition-colors duration-300;
+  }
 }
