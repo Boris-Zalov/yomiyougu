@@ -40,6 +40,11 @@ jobs:
         with:
           workspaces: src-tauri
 
+        - name: Install Clippy and Rustfmt
+          run: |
+            rustup component add clippy
+            rustup component add rustfmt
+
       - name: Run Rust tests
         working-directory: src-tauri
         run: cargo test --lib --no-fail-fast
