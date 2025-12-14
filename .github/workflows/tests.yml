@@ -91,4 +91,3 @@ jobs:
 
       - name: Build frontend
         run: pnpm build
-        continue-on-error: true
