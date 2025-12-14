@@ -12,6 +12,12 @@ const config = {
     adapter: adapter({
       fallback: "index.html",
     }),
+    alias: {
+      $components: "src/components",
+      "$components/*": "src/components/*",
+      $skeletons: "src/components/skeletons",
+      "$skeletons/*": "src/components/skeletons/*",
+    },
   },
 };
 
