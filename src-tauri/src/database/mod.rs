@@ -7,5 +7,8 @@
 pub mod connection;
 pub mod models;
 
+#[cfg(test)]
+mod tests;
+
 pub use connection::{establish_connection, DbPool};
 pub use models::*;
