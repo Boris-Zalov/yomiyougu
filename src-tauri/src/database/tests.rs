@@ -4,7 +4,7 @@
 //! Each test gets a fresh database with migrations applied.
 
 #[cfg(test)]
-mod tests {
+mod database_tests {
     use diesel::prelude::*;
     use diesel::r2d2::{ConnectionManager, Pool};
     use diesel::sqlite::SqliteConnection;

@@ -5,6 +5,8 @@
 //! - Convert AppError to String for frontend consumption
 //! - Follow snake_case naming (invoked as camelCase from JS)
 
+mod library;
 mod settings;
 
+pub use library::*;
 pub use settings::*;

@@ -19,7 +19,7 @@ pub async fn get_settings(app: tauri::AppHandle) -> Result<AppSettings, String> 
 /// Get settings organized by category (for settings page)
 #[tauri::command]
 pub async fn get_settings_schema(app: tauri::AppHandle) -> Result<Vec<SettingCategory>, String> {
-    let settings = settings::load_settings(&app).map_err(|e| String::from(e))?;
+    let settings = settings::load_settings(&app).map_err(String::from)?;
     Ok(settings.categories)
 }
 
@@ -29,7 +29,7 @@ pub async fn get_setting(
     app: tauri::AppHandle,
     key: String,
 ) -> Result<Option<SettingValue>, String> {
-    let settings = settings::load_settings(&app).map_err(|e| String::from(e))?;
+    let settings = settings::load_settings(&app).map_err(String::from)?;
     Ok(settings.get(&key).cloned())
 }
 
@@ -62,7 +62,7 @@ pub async fn complete_setup(
 ) -> Result<(), String> {
     // Apply any initial settings from the wizard
     if let Some(updates) = initial_settings {
-        settings::update_settings_from_map(&app, updates).map_err(|e| String::from(e))?;
+        settings::update_settings_from_map(&app, updates).map_err(String::from)?;
     }
 
     // Mark setup as completed

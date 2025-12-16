@@ -30,6 +30,10 @@ diesel = { version = "2.3.4", features = ["sqlite", "r2d2", "chrono", "returning
 dotenvy = "0.15.7"
 chrono = { version = "0.4.42", features = ["serde"] }
 diesel_migrations = "2.3.1"
+zip = "2.2"
+sha2 = "0.10"
+log = "0.4"
+env_logger = "0.11"
 
 # Bundle SQLite for Android/iOS (no system library available)
 libsqlite3-sys = { version = "0.35", features = ["bundled"] }

@@ -294,3 +294,22 @@ pub struct CollectionWithCount {
     pub collection: Collection,
     pub book_count: i64,
 }
+
+// ============================================================================
+// IMPORT RESULTS
+// ============================================================================
+
+/// Information about a skipped book during import
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkippedBook {
+    pub title: String,
+    pub reason: String,
+    pub existing_book_id: Option<i32>,
+}
+
+/// Result of importing books from an archive
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ImportResult {
+    pub imported: Vec<Book>,
+    pub skipped: Vec<SkippedBook>,
+}

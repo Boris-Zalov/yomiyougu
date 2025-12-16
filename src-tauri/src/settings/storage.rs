@@ -15,7 +15,7 @@ pub fn get_settings_path(app: &tauri::AppHandle) -> Result<PathBuf, AppError> {
     app.path()
         .app_config_dir()
         .map(|path| path.join(SETTINGS_FILENAME))
-        .map_err(|e| AppError::config_read_failed(e))
+        .map_err(AppError::config_read_failed)
 }
 
 /// Check if settings file exists
@@ -32,10 +32,10 @@ pub fn load_settings(app: &tauri::AppHandle) -> Result<AppSettings, AppError> {
         return Ok(create_default_settings());
     }
 
-    let json = fs::read_to_string(&path).map_err(|e| AppError::config_read_failed(e))?;
+    let json = fs::read_to_string(&path).map_err(AppError::config_read_failed)?;
 
     let settings: AppSettings =
-        serde_json::from_str(&json).map_err(|e| AppError::config_parse_failed(e))?;
+        serde_json::from_str(&json).map_err(AppError::config_parse_failed)?;
 
     // TODO: Handle schema version migrations here
     // if settings.version < SETTINGS_VERSION { migrate(settings) }
@@ -49,13 +49,13 @@ pub fn save_settings(app: &tauri::AppHandle, settings: &AppSettings) -> Result<(
 
     // Ensure directory exists
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|e| AppError::config_write_failed(e))?;
+        fs::create_dir_all(parent).map_err(AppError::config_write_failed)?;
     }
 
     let json =
-        serde_json::to_string_pretty(settings).map_err(|e| AppError::serialization_failed(e))?;
+        serde_json::to_string_pretty(settings).map_err(AppError::serialization_failed)?;
 
-    fs::write(&path, json).map_err(|e| AppError::config_write_failed(e))?;
+    fs::write(&path, json).map_err(AppError::config_write_failed)?;
 
     Ok(())
 }
@@ -98,10 +98,8 @@ fn json_to_setting_value(value: serde_json::Value) -> Option<super::types::Setti
         Value::Number(n) => {
             if let Some(i) = n.as_i64() {
                 Some(SettingValue::Number(i))
-            } else if let Some(f) = n.as_f64() {
-                Some(SettingValue::Float(f))
             } else {
-                None
+                n.as_f64().map(SettingValue::Float)
             }
         }
         _ => None,

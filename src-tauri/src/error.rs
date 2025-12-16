@@ -92,6 +92,6 @@ impl std::error::Error for AppError {}
 // Convert to String for Tauri command returns
 impl From<AppError> for String {
     fn from(err: AppError) -> String {
-        serde_json::to_string(&err).unwrap_or_else(|_| err.message)
+        serde_json::to_string(&err).unwrap_or(err.message)
     }
 }
