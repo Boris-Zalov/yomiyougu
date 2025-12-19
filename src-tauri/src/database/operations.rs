@@ -5,7 +5,6 @@
 use diesel::prelude::*;
 use log::{debug, error, info, warn};
 use sha2::{Digest, Sha256};
-use std::collections::HashMap;
 use std::fs;
 use std::io::Read;
 use std::path::Path;
@@ -14,7 +13,7 @@ use zip::ZipArchive;
 use crate::database::connection::establish_connection;
 use crate::database::models::*;
 use crate::error::{AppError, ErrorCode};
-use crate::schema::{books, collections};
+use crate::schema::{book_collections, books, collections};
 
 // ============================================================================
 // COLLECTIONS
@@ -30,11 +29,17 @@ pub fn create_collection(new_collection: NewCollection) -> Result<Collection, Ap
         .returning(Collection::as_returning())
         .get_result(&mut conn)
         .map(|collection: Collection| {
-            info!("Collection created successfully: {} (ID: {})", collection.name, collection.id);
+            info!(
+                "Collection created successfully: {} (ID: {})",
+                collection.name, collection.id
+            );
             collection
         })
         .map_err(|e| {
-            error!("Failed to create collection '{}': {}", new_collection.name, e);
+            error!(
+                "Failed to create collection '{}': {}",
+                new_collection.name, e
+            );
             AppError::new(
                 ErrorCode::DatabaseQueryFailed,
                 format!("Failed to create collection: {}", e),
@@ -57,11 +62,11 @@ pub fn get_all_collections() -> Result<Vec<CollectionWithCount>, AppError> {
             )
         })?;
 
-    // Get book counts for each collection
+    // Get book counts for each collection via junction table
     let mut result = Vec::new();
     for collection in collections_list {
-        let count = books::table
-            .filter(books::collection_id.eq(collection.id))
+        let count = book_collections::table
+            .filter(book_collections::collection_id.eq(collection.id))
             .count()
             .get_result::<i64>(&mut conn)
             .unwrap_or(0);
@@ -120,7 +125,7 @@ pub fn update_collection(
         })
 }
 
-/// Delete a collection (sets collection_id to NULL for associated books)
+/// Delete a collection (book_collections entries are deleted via CASCADE)
 pub fn delete_collection(collection_id: i32) -> Result<(), AppError> {
     info!("Deleting collection ID: {}", collection_id);
     let mut conn = establish_connection()?;
@@ -145,7 +150,10 @@ pub fn delete_collection(collection_id: i32) -> Result<(), AppError> {
 
 /// Create a new book
 pub fn create_book(new_book: NewBook) -> Result<Book, AppError> {
-    info!("Creating new book: {} ({} pages)", new_book.title, new_book.total_pages);
+    info!(
+        "Creating new book: {} ({} pages)",
+        new_book.title, new_book.total_pages
+    );
     let mut conn = establish_connection()?;
 
     diesel::insert_into(books::table)
@@ -153,7 +161,10 @@ pub fn create_book(new_book: NewBook) -> Result<Book, AppError> {
         .returning(Book::as_returning())
         .get_result(&mut conn)
         .map(|book: Book| {
-            info!("Book created successfully: {} (ID: {})", book.title, book.id);
+            info!(
+                "Book created successfully: {} (ID: {})",
+                book.title, book.id
+            );
             book
         })
         .map_err(|e| {
@@ -171,14 +182,34 @@ pub fn get_all_books(
     status: Option<String>,
     favorites_only: bool,
 ) -> Result<Vec<BookWithDetails>, AppError> {
-    debug!("Fetching books - collection: {:?}, status: {:?}, favorites: {}", 
-           collection_id, status, favorites_only);
+    debug!(
+        "Fetching books - collection: {:?}, status: {:?}, favorites: {}",
+        collection_id, status, favorites_only
+    );
     let mut conn = establish_connection()?;
+
+    // If filtering by collection, get book IDs from junction table first
+    let book_ids_in_collection: Option<Vec<i32>> = if let Some(cid) = collection_id {
+        Some(
+            book_collections::table
+                .filter(book_collections::collection_id.eq(cid))
+                .select(book_collections::book_id)
+                .load(&mut conn)
+                .map_err(|e| {
+                    AppError::new(
+                        ErrorCode::DatabaseQueryFailed,
+                        format!("Failed to load book collection mappings: {}", e),
+                    )
+                })?,
+        )
+    } else {
+        None
+    };
 
     let mut query = books::table.into_boxed();
 
-    if let Some(cid) = collection_id {
-        query = query.filter(books::collection_id.eq(cid));
+    if let Some(ref ids) = book_ids_in_collection {
+        query = query.filter(books::id.eq_any(ids));
     }
 
     if let Some(status_str) = status {
@@ -201,14 +232,27 @@ pub fn get_all_books(
             )
         })?;
 
-    // TODO: Load collection names and settings for each book
+    // Load collection names and IDs for each book
     let result: Vec<BookWithDetails> = books_list
         .into_iter()
-        .map(|book| BookWithDetails {
-            book,
-            collection_name: None,
-            settings: None,
-            bookmark_count: 0,
+        .map(|book| {
+            let book_collections_data: Vec<(i32, String)> = book_collections::table
+                .inner_join(collections::table)
+                .filter(book_collections::book_id.eq(book.id))
+                .select((collections::id, collections::name))
+                .load(&mut conn)
+                .unwrap_or_default();
+
+            let collection_ids: Vec<i32> = book_collections_data.iter().map(|(id, _)| *id).collect();
+            let collection_names: Vec<String> = book_collections_data.into_iter().map(|(_, name)| name).collect();
+
+            BookWithDetails {
+                book,
+                collection_names,
+                collection_ids,
+                settings: None,
+                bookmark_count: 0,
+            }
         })
         .collect();
 
@@ -297,6 +341,67 @@ pub fn find_book_by_hash(file_hash: &str) -> Result<Option<Book>, AppError> {
 // FILE PROCESSING HELPERS
 // ============================================================================
 
+/// Archive type detected from magic bytes
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum ArchiveType {
+    Zip,
+    #[cfg(not(target_os = "android"))]
+    Rar,
+}
+
+/// Detect archive type from magic bytes (file signature)
+fn detect_archive_type(path: &Path) -> Result<ArchiveType, AppError> {
+    let mut file = fs::File::open(path).map_err(|e| {
+        AppError::new(ErrorCode::IoError, format!("Failed to open file: {}", e))
+    })?;
+
+    let mut magic = [0u8; 8];
+    file.read(&mut magic).map_err(|e| {
+        AppError::new(ErrorCode::IoError, format!("Failed to read file header: {}", e))
+    })?;
+
+    // ZIP: starts with "PK" (0x50 0x4B)
+    if magic[0] == 0x50 && magic[1] == 0x4B {
+        return Ok(ArchiveType::Zip);
+    }
+
+    // RAR: starts with "Rar!" (0x52 0x61 0x72 0x21)
+    #[cfg(not(target_os = "android"))]
+    if magic[0] == 0x52 && magic[1] == 0x61 && magic[2] == 0x72 && magic[3] == 0x21 {
+        return Ok(ArchiveType::Rar);
+    }
+
+    // On Android, RAR is not supported
+    #[cfg(target_os = "android")]
+    if magic[0] == 0x52 && magic[1] == 0x61 && magic[2] == 0x72 && magic[3] == 0x21 {
+        return Err(AppError::new(
+            ErrorCode::IoError,
+            "RAR/CBR archives are not supported on Android. Please convert to CBZ format.",
+        ));
+    }
+
+    // If we can't detect, try to infer from extension as fallback
+    let ext = path
+        .extension()
+        .and_then(|s| s.to_str())
+        .map(|s| s.to_lowercase());
+
+    match ext.as_deref() {
+        Some("zip") | Some("cbz") => Ok(ArchiveType::Zip),
+        #[cfg(not(target_os = "android"))]
+        Some("rar") | Some("cbr") => Ok(ArchiveType::Rar),
+        #[cfg(target_os = "android")]
+        Some("rar") | Some("cbr") => Err(AppError::new(
+            ErrorCode::IoError,
+            "RAR/CBR archives are not supported on Android. Please convert to CBZ format.",
+        )),
+        _ => Err(AppError::new(
+            ErrorCode::IoError,
+            "Unsupported or unrecognized archive format",
+        )),
+    }
+}
+
 /// Check if a file is an image based on extension
 fn is_image_file(name: &str) -> bool {
     let lower = name.to_lowercase();
@@ -306,7 +411,7 @@ fn is_image_file(name: &str) -> bool {
 /// Extract book title from filename (removes only archive extensions)
 fn extract_title(filename: &str) -> String {
     let lower = filename.to_lowercase();
-    
+
     // Remove only known archive extensions
     if lower.ends_with(".cbz") {
         filename[..filename.len() - 4].to_string()
@@ -325,19 +430,32 @@ fn extract_title(filename: &str) -> String {
     }
 }
 
-/// Represents a book found within an archive
-struct ArchiveBook {
-    /// Folder path within the archive (empty string for root)
-    folder_path: String,
-    image_files: Vec<String>,
+/// Calculate hash for a specific book (folder) within an archive
+fn calculate_archive_hash(archive_path: &Path) -> Result<String, AppError> {
+    match detect_archive_type(archive_path)? {
+        ArchiveType::Zip => calculate_zip_hash(archive_path),
+        #[cfg(not(target_os = "android"))]
+        ArchiveType::Rar => calculate_rar_hash(archive_path),
+    }
 }
 
-/// Parse archive and group images by folder
-fn parse_archive_structure<R: Read + std::io::Seek>(
-    archive: &mut ZipArchive<R>,
-) -> Result<Vec<ArchiveBook>, AppError> {
-    let mut folder_images: HashMap<String, Vec<String>> = HashMap::new();
+/// Calculate hash for all images in a ZIP/CBZ archive
+fn calculate_zip_hash(archive_path: &Path) -> Result<String, AppError> {
+    let file = fs::File::open(archive_path).map_err(|e| {
+        AppError::new(ErrorCode::IoError, format!("Failed to open archive: {}", e))
+    })?;
 
+    let mut archive = ZipArchive::new(file).map_err(|e| {
+        AppError::new(
+            ErrorCode::IoError,
+            format!("Failed to read zip archive: {}", e),
+        )
+    })?;
+
+    let mut hasher = Sha256::new();
+    let mut image_files: Vec<String> = Vec::new();
+
+    // Collect all image file names
     for i in 0..archive.len() {
         let file = archive.by_index(i).map_err(|e| {
             AppError::new(
@@ -347,53 +465,16 @@ fn parse_archive_structure<R: Read + std::io::Seek>(
         })?;
 
         let file_name = file.name().to_string();
-
-        if file.is_dir() || file_name.starts_with('.') || file_name.contains("/.") {
-            continue;
+        if !file.is_dir() && is_image_file(&file_name) && !file_name.starts_with('.') && !file_name.contains("/.") {
+            image_files.push(file_name);
         }
-
-        if !is_image_file(&file_name) {
-            continue;
-        }
-
-        let folder_path = if let Some(pos) = file_name.rfind('/') {
-            file_name[..pos].to_string()
-        } else {
-            String::new()
-        };
-
-        folder_images
-            .entry(folder_path)
-            .or_default()
-            .push(file_name);
     }
 
-    // Convert to ArchiveBook structs
-    let mut books: Vec<ArchiveBook> = folder_images
-        .into_iter()
-        .filter(|(_, images)| !images.is_empty())
-        .map(|(folder_path, mut image_files)| {
-            image_files.sort();
-            ArchiveBook {
-                folder_path,
-                image_files,
-            }
-        })
-        .collect();
+    // Sort for consistent hashing
+    image_files.sort();
 
-    books.sort_by(|a, b| a.folder_path.cmp(&b.folder_path));
-
-    Ok(books)
-}
-
-/// Calculate hash for a specific book (folder) within an archive
-fn calculate_book_hash<R: Read + std::io::Seek>(
-    archive: &mut ZipArchive<R>,
-    image_files: &[String],
-) -> Result<String, AppError> {
-    let mut hasher = Sha256::new();
-
-    for file_name in image_files {
+    // Hash all image content
+    for file_name in &image_files {
         let mut file = archive.by_name(file_name).map_err(|e| {
             AppError::new(
                 ErrorCode::IoError,
@@ -421,20 +502,171 @@ fn calculate_book_hash<R: Read + std::io::Seek>(
     Ok(format!("{:x}", hasher.finalize()))
 }
 
+/// Calculate hash for all images in a RAR/CBR archive (desktop only)
+#[cfg(not(target_os = "android"))]
+fn calculate_rar_hash(archive_path: &Path) -> Result<String, AppError> {
+    let mut hasher = Sha256::new();
+    let mut image_entries: Vec<(String, Vec<u8>)> = Vec::new();
+
+    let archive = unrar::Archive::new(archive_path)
+        .open_for_processing()
+        .map_err(|e| {
+            AppError::new(
+                ErrorCode::IoError,
+                format!("Failed to open RAR archive: {}", e),
+            )
+        })?;
+
+    let mut current_archive = archive;
+    loop {
+        // Read header first to move to CursorBeforeFile state
+        let header_result = current_archive.read_header();
+        match header_result {
+            Ok(Some(header)) => {
+                let file_name = header.entry().filename.to_string_lossy().to_string();
+                let is_dir = header.entry().is_directory();
+
+                if !is_dir
+                    && is_image_file(&file_name)
+                    && !file_name.starts_with('.')
+                    && !file_name.contains("/.")
+                {
+                    // Read the file content
+                    let (data, next) = header.read().map_err(|e| {
+                        AppError::new(
+                            ErrorCode::IoError,
+                            format!("Failed to read RAR entry: {}", e),
+                        )
+                    })?;
+                    image_entries.push((file_name, data));
+                    current_archive = next;
+                } else {
+                    // Skip non-image files
+                    current_archive = header.skip().map_err(|e| {
+                        AppError::new(
+                            ErrorCode::IoError,
+                            format!("Failed to skip RAR entry: {}", e),
+                        )
+                    })?;
+                }
+            }
+            Ok(None) => break, // End of archive
+            Err(e) => {
+                return Err(AppError::new(
+                    ErrorCode::IoError,
+                    format!("Failed to read RAR header: {}", e),
+                ));
+            }
+        }
+    }
+
+    // Sort by filename for consistent hashing
+    image_entries.sort_by(|a, b| a.0.cmp(&b.0));
+
+    // Hash all image content
+    for (_, data) in &image_entries {
+        hasher.update(data);
+    }
+
+    Ok(format!("{:x}", hasher.finalize()))
+}
+
+/// Count images in a ZIP/CBZ archive
+fn count_zip_images(archive_path: &Path) -> Result<i32, AppError> {
+    let file = fs::File::open(archive_path).map_err(|e| {
+        AppError::new(ErrorCode::IoError, format!("Failed to open archive: {}", e))
+    })?;
+
+    let mut archive = ZipArchive::new(file).map_err(|e| {
+        AppError::new(
+            ErrorCode::IoError,
+            format!("Failed to read zip archive: {}", e),
+        )
+    })?;
+
+    let mut count = 0;
+    for i in 0..archive.len() {
+        let file = archive.by_index(i).map_err(|e| {
+            AppError::new(
+                ErrorCode::IoError,
+                format!("Failed to read archive entry: {}", e),
+            )
+        })?;
+
+        let file_name = file.name().to_string();
+        if !file.is_dir() && is_image_file(&file_name) && !file_name.starts_with('.') && !file_name.contains("/.") {
+            count += 1;
+        }
+    }
+
+    Ok(count)
+}
+
+/// Count images in a RAR/CBR archive (desktop only)
+#[cfg(not(target_os = "android"))]
+fn count_rar_images(archive_path: &Path) -> Result<i32, AppError> {
+    let archive = unrar::Archive::new(archive_path)
+        .open_for_listing()
+        .map_err(|e| {
+            AppError::new(
+                ErrorCode::IoError,
+                format!("Failed to open RAR archive for listing: {}", e),
+            )
+        })?;
+
+    let mut count = 0;
+    for entry in archive {
+        let entry = entry.map_err(|e| {
+            AppError::new(
+                ErrorCode::IoError,
+                format!("Failed to read RAR entry: {}", e),
+            )
+        })?;
+
+        let file_name = entry.filename.to_string_lossy().to_string();
+        if !entry.is_directory()
+            && is_image_file(&file_name)
+            && !file_name.starts_with('.')
+            && !file_name.contains("/.")
+        {
+            count += 1;
+        }
+    }
+
+    Ok(count)
+}
+
+/// Count images in an archive (detects format using magic bytes)
+fn count_archive_images(archive_path: &Path) -> Result<i32, AppError> {
+    match detect_archive_type(archive_path)? {
+        ArchiveType::Zip => count_zip_images(archive_path),
+        #[cfg(not(target_os = "android"))]
+        ArchiveType::Rar => count_rar_images(archive_path),
+    }
+}
+
 // ============================================================================
 // ARCHIVE IMPORT
 // ============================================================================
 
-/// Import books from a zip/cbz archive
+/// Import a single book from a zip/cbz/rar/cbr archive
+/// Archive type is detected using magic bytes, not file extension
+/// Each archive is treated as a single book regardless of internal structure
 /// If backup_files is true, copies the archive to library_dir before importing
-/// Returns ImportResult with successfully imported books and skipped duplicates
-pub fn import_books_from_archive(
+/// Returns the imported Book or an error if the book is a duplicate
+/// original_filename can be provided to override the filename extracted from the path
+pub fn import_book_from_archive(
     archive_path: &Path,
     collection_id: Option<i32>,
     backup_files: bool,
     library_dir: &Path,
-) -> Result<ImportResult, AppError> {
-    info!("Starting import from archive: {:?} (backup: {})", archive_path, backup_files);
+    original_filename: Option<String>,
+) -> Result<Book, AppError> {
+    info!(
+        "Starting import from archive: {:?} (backup: {})",
+        archive_path, backup_files
+    );
+
     // Validate file exists
     if !archive_path.exists() {
         return Err(AppError::new(
@@ -443,8 +675,49 @@ pub fn import_books_from_archive(
         ));
     }
 
-    // Determine the effective path (original or backup location)
+    // Detect archive type using magic bytes
+    let archive_type = detect_archive_type(archive_path)?;
+    info!("Detected archive type: {:?}", archive_type);
+
+    // Use original_filename if provided (for Android content URIs), otherwise extract from path
+    let archive_filename = original_filename.unwrap_or_else(|| {
+        archive_path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("unknown")
+            .to_string()
+    });
+
+    // Count images in the archive
+    let total_pages = count_archive_images(archive_path)?;
+    info!("Found {} image(s) in archive", total_pages);
+
+    if total_pages == 0 {
+        return Err(AppError::new(
+            ErrorCode::IoError,
+            "No images found in archive",
+        ));
+    }
+
+    // Calculate hash for duplicate detection
+    let book_hash = calculate_archive_hash(archive_path)?;
+
+    // Check for duplicates before backing up
+    if let Some(existing_book) = find_book_by_hash(&book_hash)? {
+        warn!(
+            "Duplicate book detected: {} (hash: {}...)",
+            archive_filename,
+            &book_hash[..16]
+        );
+        return Err(AppError::new(
+            ErrorCode::DuplicateEntry,
+            format!("Duplicate of existing book '{}'", existing_book.title),
+        ));
+    }
+
+    // Backup the file if enabled
     let effective_path = if backup_files {
+        info!("Backing up archive to library directory");
         // Ensure library directory exists
         fs::create_dir_all(library_dir).map_err(|e| {
             AppError::new(
@@ -454,11 +727,7 @@ pub fn import_books_from_archive(
         })?;
 
         // Generate destination path
-        let archive_filename = archive_path
-            .file_name()
-            .ok_or_else(|| AppError::new(ErrorCode::IoError, "Invalid archive filename"))?;
-
-        let mut dest_path = library_dir.join(archive_filename);
+        let mut dest_path = library_dir.join(&archive_filename);
 
         // Handle filename conflicts by appending a number
         if dest_path.exists() {
@@ -491,128 +760,151 @@ pub fn import_books_from_archive(
             )
         })?;
 
+        info!("Archive backed up to: {:?}", dest_path);
         dest_path
     } else {
         archive_path.to_path_buf()
     };
-
-    let file = fs::File::open(&effective_path).map_err(|e| {
-        AppError::new(
-            ErrorCode::IoError,
-            format!("Failed to open archive: {}", e),
-        )
-    })?;
-
-    let mut archive = ZipArchive::new(file).map_err(|e| {
-        AppError::new(
-            ErrorCode::IoError,
-            format!("Failed to read zip archive: {}", e),
-        )
-    })?;
 
     // Get archive metadata
     let file_size: Option<i32> = fs::metadata(&effective_path)
         .ok()
         .and_then(|m| m.len().try_into().ok());
 
-    let archive_filename = effective_path
+    let effective_filename = effective_path
         .file_name()
         .and_then(|s| s.to_str())
         .unwrap_or("unknown")
         .to_string();
 
-    // Parse archive structure to find books
-    let archive_books = parse_archive_structure(&mut archive)?;
-    info!("Found {} book(s) in archive", archive_books.len());
+    // Extract title from filename
+    let title = extract_title(&effective_filename);
 
-    if archive_books.is_empty() {
-        return Err(AppError::new(
-            ErrorCode::IoError,
-            "No images found in archive",
-        ));
+    // Create the book entry
+    let new_book = NewBook {
+        file_path: effective_path.to_string_lossy().to_string(),
+        filename: effective_filename,
+        file_size,
+        file_hash: Some(book_hash),
+        title: title.clone(),
+        total_pages,
+    };
+
+    let book = create_book(new_book)?;
+    info!("Imported book: {} (ID: {})", book.title, book.id);
+
+    // Add to collection if specified
+    if let Some(cid) = collection_id {
+        add_book_to_collection(book.id, cid)?;
     }
 
-    let mut imported: Vec<Book> = Vec::new();
-    let mut skipped: Vec<SkippedBook> = Vec::new();
+    Ok(book)
+}
 
-    // Check if it's a single book (all images at root or single folder)
-    let is_single_book = archive_books.len() == 1;
+// ============================================================================
+// BOOK-COLLECTION OPERATIONS
+// ============================================================================
 
-    for archive_book in archive_books {
-        // Calculate unique hash for this book's content
-        let book_hash = calculate_book_hash(&mut archive, &archive_book.image_files)?;
+/// Add a book to a collection
+pub fn add_book_to_collection(book_id: i32, collection_id: i32) -> Result<BookCollection, AppError> {
+    info!("Adding book {} to collection {}", book_id, collection_id);
+    let mut conn = establish_connection()?;
 
-        // Determine book title
-        let title = if is_single_book && archive_book.folder_path.is_empty() {
-            // Single book at root - use archive name
-            extract_title(&archive_filename)
-        } else if archive_book.folder_path.is_empty() {
-            // Multiple books but this one is at root - use archive name
-            extract_title(&archive_filename)
-        } else {
-            // Use the deepest folder name as title
-            let folder_name = archive_book
-                .folder_path
-                .rsplit('/')
-                .next()
-                .unwrap_or(&archive_book.folder_path);
-            extract_title(folder_name)
-        };
+    let new_entry = NewBookCollection {
+        book_id,
+        collection_id,
+    };
 
-        // Build file_path: archive_path for single root book, or archive_path#folder for others
-        let file_path = if is_single_book && archive_book.folder_path.is_empty() {
-            effective_path.to_string_lossy().to_string()
-        } else if archive_book.folder_path.is_empty() {
-            // Root images in multi-book archive
-            format!("{}#", effective_path.to_string_lossy())
-        } else {
-            format!(
-                "{}#{}",
-                effective_path.to_string_lossy(),
-                archive_book.folder_path
+    diesel::insert_into(book_collections::table)
+        .values(&new_entry)
+        .returning(BookCollection::as_returning())
+        .get_result(&mut conn)
+        .map(|entry: BookCollection| {
+            info!("Book {} added to collection {} successfully", book_id, collection_id);
+            entry
+        })
+        .map_err(|e| {
+            error!("Failed to add book {} to collection {}: {}", book_id, collection_id, e);
+            AppError::new(
+                ErrorCode::DatabaseQueryFailed,
+                format!("Failed to add book to collection: {}", e),
             )
+        })
+}
+
+/// Remove a book from a collection
+pub fn remove_book_from_collection(book_id: i32, collection_id: i32) -> Result<(), AppError> {
+    info!("Removing book {} from collection {}", book_id, collection_id);
+    let mut conn = establish_connection()?;
+
+    diesel::delete(
+        book_collections::table
+            .filter(book_collections::book_id.eq(book_id))
+            .filter(book_collections::collection_id.eq(collection_id)),
+    )
+    .execute(&mut conn)
+    .map_err(|e| {
+        error!("Failed to remove book {} from collection {}: {}", book_id, collection_id, e);
+        AppError::new(
+            ErrorCode::DatabaseQueryFailed,
+            format!("Failed to remove book from collection: {}", e),
+        )
+    })?;
+
+    info!("Book {} removed from collection {} successfully", book_id, collection_id);
+    Ok(())
+}
+
+/// Get all collections for a book
+pub fn get_book_collections(book_id: i32) -> Result<Vec<Collection>, AppError> {
+    let mut conn = establish_connection()?;
+
+    book_collections::table
+        .inner_join(collections::table)
+        .filter(book_collections::book_id.eq(book_id))
+        .select(Collection::as_select())
+        .load(&mut conn)
+        .map_err(|e| {
+            AppError::new(
+                ErrorCode::DatabaseQueryFailed,
+                format!("Failed to get collections for book: {}", e),
+            )
+        })
+}
+
+/// Set the collections for a book (replaces existing)
+pub fn set_book_collections(book_id: i32, collection_ids: Vec<i32>) -> Result<(), AppError> {
+    info!("Setting collections for book {}: {:?}", book_id, collection_ids);
+    let mut conn = establish_connection()?;
+
+    // Remove all existing collection associations
+    diesel::delete(book_collections::table.filter(book_collections::book_id.eq(book_id)))
+        .execute(&mut conn)
+        .map_err(|e| {
+            AppError::new(
+                ErrorCode::DatabaseQueryFailed,
+                format!("Failed to clear book collections: {}", e),
+            )
+        })?;
+
+    // Add new collection associations
+    for cid in collection_ids {
+        let new_entry = NewBookCollection {
+            book_id,
+            collection_id: cid,
         };
 
-        // Check for duplicate by hash
-        match find_book_by_hash(&book_hash)? {
-            Some(existing_book) => {
-                warn!("Skipping duplicate book: {} (hash: {}...)", title, &book_hash[..16]);
-                skipped.push(SkippedBook {
-                    title: title.clone(),
-                    reason: format!("Duplicate of existing book '{}'", existing_book.title),
-                    existing_book_id: Some(existing_book.id),
-                });
-            }
-            None => {
-                // Create the new book
-                let new_book = NewBook {
-                    file_path,
-                    filename: archive_filename.clone(),
-                    file_size,
-                    file_hash: Some(book_hash),
-                    title: title.clone(),
-                    total_pages: archive_book.image_files.len() as i32,
-                    collection_id,
-                };
-
-                match create_book(new_book) {
-                    Ok(book) => {
-                        debug!("Imported book: {} (ID: {})", book.title, book.id);
-                        imported.push(book)
-                    }
-                    Err(e) => {
-                        // Could be a file_path uniqueness violation or other DB error
-                        skipped.push(SkippedBook {
-                            title,
-                            reason: format!("Database error: {}", e),
-                            existing_book_id: None,
-                        });
-                    }
-                }
-            }
-        }
+        diesel::insert_into(book_collections::table)
+            .values(&new_entry)
+            .execute(&mut conn)
+            .map_err(|e| {
+                AppError::new(
+                    ErrorCode::DatabaseQueryFailed,
+                    format!("Failed to add book to collection {}: {}", cid, e),
+                )
+            })?;
     }
 
-    info!("Import completed: {} imported, {} skipped", imported.len(), skipped.len());
-    Ok(ImportResult { imported, skipped })
+    info!("Book {} collections updated successfully", book_id);
+    Ok(())
 }

@@ -11,3 +11,4 @@ vite.config.ts.timestamp-*
 src-tauri/gen
 .vscode
 *.db
+vite-profile-0.cpuprofile

@@ -52,8 +52,7 @@ pub fn save_settings(app: &tauri::AppHandle, settings: &AppSettings) -> Result<(
         fs::create_dir_all(parent).map_err(AppError::config_write_failed)?;
     }
 
-    let json =
-        serde_json::to_string_pretty(settings).map_err(AppError::serialization_failed)?;
+    let json = serde_json::to_string_pretty(settings).map_err(AppError::serialization_failed)?;
 
     fs::write(&path, json).map_err(AppError::config_write_failed)?;
 

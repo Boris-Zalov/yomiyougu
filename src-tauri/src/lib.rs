@@ -26,6 +26,7 @@ pub fn run() {
     log::info!("Starting yomiyougu application");
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_opener::init())
@@ -55,7 +56,11 @@ pub fn run() {
             commands::get_book,
             commands::update_book,
             commands::delete_book,
-            commands::import_books_from_archive,
+            commands::import_book_from_archive,
+            // Library commands - book-collection management
+            commands::set_book_collections,
+            commands::add_book_to_collection,
+            commands::remove_book_from_collection,
         ])
         .run(tauri::generate_context!())
         .expect("Critical error while running tauri application");

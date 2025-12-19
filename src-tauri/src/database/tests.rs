@@ -47,7 +47,6 @@ mod database_tests {
             let new_collection = NewCollection {
                 name: "Manga".to_string(),
                 description: Some("Japanese comics".to_string()),
-                cover_path: None,
             };
 
             let result = diesel::insert_into(collections::table)
@@ -70,13 +69,11 @@ mod database_tests {
             let collection1 = NewCollection {
                 name: "Manga".to_string(),
                 description: None,
-                cover_path: None,
             };
 
             let collection2 = NewCollection {
                 name: "Manga".to_string(), // Same name
                 description: Some("Duplicate".to_string()),
-                cover_path: None,
             };
 
             // First insert should succeed
@@ -102,7 +99,6 @@ mod database_tests {
             let new_collection = NewCollection {
                 name: "Old Name".to_string(),
                 description: None,
-                cover_path: None,
             };
 
             let collection: Collection = diesel::insert_into(collections::table)
@@ -115,7 +111,6 @@ mod database_tests {
             let update = UpdateCollection {
                 name: Some("New Name".to_string()),
                 description: Some(Some("Updated description".to_string())),
-                cover_path: None,
                 updated_at: Some(chrono::Utc::now().naive_utc()),
             };
 
@@ -131,10 +126,7 @@ mod database_tests {
                 .unwrap();
 
             assert_eq!(updated.name, "New Name");
-            assert_eq!(
-                updated.description,
-                Some("Updated description".to_string())
-            );
+            assert_eq!(updated.description, Some("Updated description".to_string()));
         }
 
         #[test]
@@ -145,7 +137,6 @@ mod database_tests {
             let new_collection = NewCollection {
                 name: "To Delete".to_string(),
                 description: None,
-                cover_path: None,
             };
 
             let collection: Collection = diesel::insert_into(collections::table)
@@ -176,7 +167,6 @@ mod database_tests {
                 let new_collection = NewCollection {
                     name: format!("Collection {}", i),
                     description: None,
-                    cover_path: None,
                 };
                 diesel::insert_into(collections::table)
                     .values(&new_collection)
@@ -210,7 +200,6 @@ mod database_tests {
                 file_hash: Some("abc123".to_string()),
                 title: title.to_string(),
                 total_pages: 100,
-                collection_id: None,
             };
 
             diesel::insert_into(books::table)
@@ -246,7 +235,6 @@ mod database_tests {
                 file_hash: None,
                 title: "Manga 1".to_string(),
                 total_pages: 50,
-                collection_id: None,
             };
 
             let book2 = NewBook {
@@ -256,7 +244,6 @@ mod database_tests {
                 file_hash: None,
                 title: "Manga 2".to_string(),
                 total_pages: 60,
-                collection_id: None,
             };
 
             diesel::insert_into(books::table)
@@ -359,13 +346,12 @@ mod database_tests {
                 .values(&NewCollection {
                     name: "Shonen".to_string(),
                     description: None,
-                    cover_path: None,
                 })
                 .returning(Collection::as_returning())
                 .get_result(&mut conn)
                 .unwrap();
 
-            // Create book in collection
+            // Create book
             let new_book = NewBook {
                 file_path: "/manga/naruto.cbz".to_string(),
                 filename: "naruto.cbz".to_string(),
@@ -373,7 +359,6 @@ mod database_tests {
                 file_hash: None,
                 title: "Naruto".to_string(),
                 total_pages: 200,
-                collection_id: Some(collection.id),
             };
 
             let book: Book = diesel::insert_into(books::table)
@@ -382,11 +367,20 @@ mod database_tests {
                 .get_result(&mut conn)
                 .unwrap();
 
-            assert_eq!(book.collection_id, Some(collection.id));
+            // Add book to collection via junction table
+            diesel::insert_into(book_collections::table)
+                .values(&NewBookCollection {
+                    book_id: book.id,
+                    collection_id: collection.id,
+                })
+                .execute(&mut conn)
+                .unwrap();
 
-            // Query books in collection
+            // Query books in collection via junction table
             let books_in_collection: Vec<Book> = books::table
-                .filter(books::collection_id.eq(collection.id))
+                .inner_join(book_collections::table.on(book_collections::book_id.eq(books::id)))
+                .filter(book_collections::collection_id.eq(collection.id))
+                .select(Book::as_select())
                 .load(&mut conn)
                 .unwrap();
 
@@ -394,7 +388,7 @@ mod database_tests {
         }
 
         #[test]
-        fn test_collection_deletion_sets_null() {
+        fn test_collection_deletion_removes_junction() {
             let pool = setup_test_db();
             let mut conn = pool.get().unwrap();
 
@@ -403,13 +397,12 @@ mod database_tests {
                 .values(&NewCollection {
                     name: "To Delete".to_string(),
                     description: None,
-                    cover_path: None,
                 })
                 .returning(Collection::as_returning())
                 .get_result(&mut conn)
                 .unwrap();
 
-            // Create book in collection
+            // Create book
             let book: Book = diesel::insert_into(books::table)
                 .values(&NewBook {
                     file_path: "/manga/test.cbz".to_string(),
@@ -418,25 +411,46 @@ mod database_tests {
                     file_hash: None,
                     title: "Test".to_string(),
                     total_pages: 50,
-                    collection_id: Some(collection.id),
                 })
                 .returning(Book::as_returning())
                 .get_result(&mut conn)
                 .unwrap();
 
-            assert!(book.collection_id.is_some());
+            // Add book to collection via junction table
+            diesel::insert_into(book_collections::table)
+                .values(&NewBookCollection {
+                    book_id: book.id,
+                    collection_id: collection.id,
+                })
+                .execute(&mut conn)
+                .unwrap();
+
+            let junction_count: i64 = book_collections::table
+                .filter(book_collections::book_id.eq(book.id))
+                .count()
+                .get_result(&mut conn)
+                .unwrap();
+            assert_eq!(junction_count, 1);
 
             // Delete collection
             diesel::delete(collections::table.find(collection.id))
                 .execute(&mut conn)
                 .unwrap();
 
-            // Book should still exist but with NULL collection_id
-            let updated_book: Book = books::table.find(book.id).first(&mut conn).unwrap();
+            // Book should still exist
+            let book_exists: bool = books::table.find(book.id).first::<Book>(&mut conn).is_ok();
+            assert!(book_exists, "Book should still exist after collection deletion");
 
-            assert!(
-                updated_book.collection_id.is_none(),
-                "collection_id should be NULL after collection deletion"
+            // Junction entry should be deleted (CASCADE)
+            let remaining: i64 = book_collections::table
+                .filter(book_collections::book_id.eq(book.id))
+                .count()
+                .get_result(&mut conn)
+                .unwrap();
+
+            assert_eq!(
+                remaining, 0,
+                "Junction entries should be deleted after collection deletion"
             );
         }
 
@@ -446,7 +460,10 @@ mod database_tests {
             let mut conn = pool.get().unwrap();
 
             // Create books with different statuses
-            for (i, status) in ["unread", "reading", "completed", "reading"].iter().enumerate() {
+            for (i, status) in ["unread", "reading", "completed", "reading"]
+                .iter()
+                .enumerate()
+            {
                 let book = NewBook {
                     file_path: format!("/manga/book{}.cbz", i),
                     filename: format!("book{}.cbz", i),
@@ -454,7 +471,6 @@ mod database_tests {
                     file_hash: None,
                     title: format!("Book {}", i),
                     total_pages: 100,
-                    collection_id: None,
                 };
 
                 let inserted: Book = diesel::insert_into(books::table)
@@ -493,7 +509,6 @@ mod database_tests {
                 file_hash: None,
                 title: "Test Book".to_string(),
                 total_pages: 100,
-                collection_id: None,
             };
 
             diesel::insert_into(books::table)
@@ -611,7 +626,6 @@ mod database_tests {
                 file_hash: None,
                 title: "Settings Test Book".to_string(),
                 total_pages: 100,
-                collection_id: None,
             };
 
             diesel::insert_into(books::table)
@@ -795,7 +809,6 @@ mod database_tests {
                         file_hash: None,
                         title: format!("Book {}", i),
                         total_pages: 100,
-                        collection_id: None,
                     })
                     .returning(Book::as_returning())
                     .get_result(&mut conn)
@@ -829,15 +842,14 @@ mod database_tests {
                 .values(&NewCollection {
                     name: "Test Collection".to_string(),
                     description: None,
-                    cover_path: None,
                 })
                 .returning(Collection::as_returning())
                 .get_result(&mut conn)
                 .unwrap();
 
-            // Add books to collection
+            // Add books and link to collection via junction table
             for i in 0..5 {
-                diesel::insert_into(books::table)
+                let book: Book = diesel::insert_into(books::table)
                     .values(&NewBook {
                         file_path: format!("/manga/coll_book{}.cbz", i),
                         filename: format!("coll_book{}.cbz", i),
@@ -845,14 +857,22 @@ mod database_tests {
                         file_hash: None,
                         title: format!("Collection Book {}", i),
                         total_pages: 50,
-                        collection_id: Some(collection.id),
+                    })
+                    .returning(Book::as_returning())
+                    .get_result(&mut conn)
+                    .unwrap();
+
+                diesel::insert_into(book_collections::table)
+                    .values(&NewBookCollection {
+                        book_id: book.id,
+                        collection_id: collection.id,
                     })
                     .execute(&mut conn)
                     .unwrap();
             }
 
-            let count: i64 = books::table
-                .filter(books::collection_id.eq(collection.id))
+            let count: i64 = book_collections::table
+                .filter(book_collections::collection_id.eq(collection.id))
                 .count()
                 .get_result(&mut conn)
                 .unwrap();
@@ -876,7 +896,6 @@ mod database_tests {
                         file_hash: None,
                         title: title.to_string(),
                         total_pages: 100,
-                        collection_id: None,
                     })
                     .execute(&mut conn)
                     .unwrap();
@@ -904,7 +923,6 @@ mod database_tests {
                         file_hash: None,
                         title: format!("Book {}", i),
                         total_pages: 100,
-                        collection_id: None,
                     })
                     .returning(Book::as_returning())
                     .get_result(&mut conn)

@@ -24,6 +24,7 @@ pub enum ErrorCode {
     DatabaseMigrationFailed,
     DatabaseQueryFailed,
     DatabasePathError,
+    DuplicateEntry,
 }
 
 impl AppError {

@@ -9,9 +9,44 @@ import type {
   BookWithDetails,
   Collection,
   CollectionWithCount,
-  ImportResult,
   ReadingStatus,
 } from "$lib/types/library";
+
+/**
+ * Extract filename from a file path or Android content URI
+ * @param path - File path or content URI
+ * @returns Extracted filename or undefined
+ */
+function extractFilename(path: string): string | undefined {
+  // For Android content URIs
+  if (path.startsWith('content://')) {
+    try {
+      const decoded = decodeURIComponent(path);
+      
+      // "primary:Download/filename.cbz" pattern
+      const primaryMatch = decoded.match(/primary:[^/]+\/([^/]+)$/);
+      if (primaryMatch) return primaryMatch[1];
+      
+      // raw:/storage/.../filename.cbz" pattern
+      const rawMatch = decoded.match(/raw:\/.*\/([^/]+)$/);
+      if (rawMatch) return rawMatch[1];
+      
+      // Look for anything after the last slash that looks like a filename
+      const parts = decoded.split('/');
+      const lastPart = parts[parts.length - 1];
+      if (lastPart && /\.(cbz|cbr|zip|rar)$/i.test(lastPart)) {
+        return lastPart;
+      }
+    } catch (e) {
+      console.warn('Failed to parse content URI:', e);
+    }
+    return undefined;
+  }
+  
+  // For regular file paths, extract the filename
+  const parts = path.split(/[\\/]/);
+  return parts[parts.length - 1];
+}
 
 // ============================================================================
 // COLLECTION COMMANDS
@@ -22,13 +57,11 @@ import type {
  */
 export async function createCollection(
   name: string,
-  description?: string,
-  coverPath?: string
+  description?: string
 ): Promise<Collection> {
   return invoke<Collection>("create_collection", {
     name,
     description: description ?? null,
-    coverPath: coverPath ?? null,
   });
 }
 
@@ -54,14 +87,12 @@ export async function updateCollection(
   updates: {
     name?: string;
     description?: string | null;
-    coverPath?: string | null;
   }
 ): Promise<Collection> {
   return invoke<Collection>("update_collection", {
     collectionId,
     name: updates.name,
     description: updates.description,
-    coverPath: updates.coverPath,
   });
 }
 
@@ -106,7 +137,6 @@ export async function updateBook(
   updates: {
     title?: string;
     currentPage?: number;
-    collectionId?: number | null;
     isFavorite?: boolean;
     readingStatus?: ReadingStatus;
   }
@@ -115,10 +145,39 @@ export async function updateBook(
     bookId,
     title: updates.title,
     currentPage: updates.currentPage,
-    collectionId: updates.collectionId,
     isFavorite: updates.isFavorite,
     readingStatus: updates.readingStatus,
   });
+}
+
+/**
+ * Set the collections for a book (replaces existing)
+ */
+export async function setBookCollections(
+  bookId: number,
+  collectionIds: number[]
+): Promise<void> {
+  return invoke<void>("set_book_collections", { bookId, collectionIds });
+}
+
+/**
+ * Add a book to a collection
+ */
+export async function addBookToCollection(
+  bookId: number,
+  collectionId: number
+): Promise<void> {
+  return invoke<void>("add_book_to_collection", { bookId, collectionId });
+}
+
+/**
+ * Remove a book from a collection
+ */
+export async function removeBookFromCollection(
+  bookId: number,
+  collectionId: number
+): Promise<void> {
+  return invoke<void>("remove_book_from_collection", { bookId, collectionId });
 }
 
 /**
@@ -129,18 +188,22 @@ export async function deleteBook(bookId: number): Promise<void> {
 }
 
 /**
- * Import books from a zip/cbz archive file
+ * Import a single book from a zip/cbz/rar/cbr archive file
+ * !! RAR/CBR support is desktop-only (native unrar crate doesn't compile for Android) !!
  * @param filePath - Path to the archive file
- * @param collectionId - Optional collection to add imported books to
- * @returns ImportResult with imported books and skipped duplicates
+ * @param collectionId - Optional collection to add the imported book to
+ * @returns The imported Book
  */
-export async function importBooksFromArchive(
+export async function importBookFromArchive(
   filePath: string,
   collectionId?: number
-): Promise<ImportResult> {
-  return invoke<ImportResult>("import_books_from_archive", {
+): Promise<Book> {
+  const originalFilename = extractFilename(filePath);
+  
+  return invoke<Book>("import_book_from_archive", {
     filePath,
     collectionId: collectionId ?? null,
+    originalFilename: originalFilename ?? null,
   });
 }
 

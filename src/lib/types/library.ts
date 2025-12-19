@@ -24,7 +24,6 @@ export interface Book {
 	last_read_at: string | null;
 	added_at: string;
 	updated_at: string;
-	collection_id: number | null;
 	is_favorite: boolean;
 	reading_status: ReadingStatus;
 }
@@ -48,7 +47,8 @@ export interface BookSettings {
  * Note: Uses #[serde(flatten)] so book fields are at the top level
  */
 export interface BookWithDetails extends Book {
-	collection_name: string | null;
+	collection_names: string[];
+	collection_ids: number[];
 	settings: BookSettings | null;
 	bookmark_count: number;
 }
@@ -60,7 +60,6 @@ export interface Collection {
 	id: number;
 	name: string;
 	description: string | null;
-	cover_path: string | null;
 	created_at: string;
 	updated_at: string;
 }

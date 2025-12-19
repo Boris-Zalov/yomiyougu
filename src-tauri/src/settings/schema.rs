@@ -28,57 +28,45 @@ fn create_appearance_category() -> SettingCategory {
         "Customize the look and feel of the application",
     )
     .with_icon("palette")
-    .add_settings(vec![
-        SettingItem::new(
-            "appearance.theme",
-            "Theme",
-            "Choose between light, dark, or system-matched theme",
-            WidgetType::Select {
-                options: vec![
-                    SelectOption::with_description("light", "Light", "Clean, bright appearance"),
-                    SelectOption::with_description("dark", "Dark", "Easy on the eyes in low light"),
-                    SelectOption::with_description(
-                        "system",
-                        "System",
-                        "Match your device settings",
-                    ),
-                ],
-            },
-            SettingValue::String("system".to_string()),
-        ),
-    ])
+    .add_settings(vec![SettingItem::new(
+        "appearance.theme",
+        "Theme",
+        "Choose between light, dark, or system-matched theme",
+        WidgetType::Select {
+            options: vec![
+                SelectOption::with_description("light", "Light", "Clean, bright appearance"),
+                SelectOption::with_description("dark", "Dark", "Easy on the eyes in low light"),
+                SelectOption::with_description("system", "System", "Match your device settings"),
+            ],
+        },
+        SettingValue::String("system".to_string()),
+    )])
 }
 
 fn create_reading_category() -> SettingCategory {
     SettingCategory::new("reading", "Reading", "Configure your reading experience")
         .with_icon("book-open")
-        .add_settings(vec![
-            SettingItem::new(
-                "reading.direction",
-                "Reading Direction",
-                "Default page turn direction for manga and comics",
-                WidgetType::Select {
-                    options: vec![
-                        SelectOption::with_description(
-                            "rtl",
-                            "Right to Left",
-                            "Traditional manga style (Japanese)",
-                        ),
-                        SelectOption::with_description(
-                            "ltr",
-                            "Left to Right",
-                            "Western comic style",
-                        ),
-                        SelectOption::with_description(
-                            "vertical",
-                            "Vertical Scroll",
-                            "Webtoon/manhwa style",
-                        ),
-                    ],
-                },
-                SettingValue::String("rtl".to_string()),
-            ),
-        ])
+        .add_settings(vec![SettingItem::new(
+            "reading.direction",
+            "Reading Direction",
+            "Default page turn direction for manga and comics",
+            WidgetType::Select {
+                options: vec![
+                    SelectOption::with_description(
+                        "rtl",
+                        "Right to Left",
+                        "Traditional manga style (Japanese)",
+                    ),
+                    SelectOption::with_description("ltr", "Left to Right", "Western comic style"),
+                    SelectOption::with_description(
+                        "vertical",
+                        "Vertical Scroll",
+                        "Webtoon/manhwa style",
+                    ),
+                ],
+            },
+            SettingValue::String("rtl".to_string()),
+        )])
 }
 
 fn create_library_category() -> SettingCategory {
