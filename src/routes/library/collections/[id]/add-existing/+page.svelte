@@ -275,7 +275,6 @@
           color="green"
           onclick={navigateToCollection}
           class="ml-2"
-          aria-label="Navigate to the collection page"
         >
           View Collection
         </Button>
