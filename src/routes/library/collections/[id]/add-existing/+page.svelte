@@ -36,7 +36,7 @@
   let showErrorToast = $state(false);
   let errorMessage = $state("");
   let addedCount = $state(0);
-  let navigationTimeoutId = $state<number | null>(null);
+  let navigationTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
   // Books not already in this collection
   let availableBooks = $derived(
@@ -109,7 +109,7 @@
       // Auto-dismiss toast and navigate after 3 seconds
       navigationTimeoutId = setTimeout(() => {
         navigateToCollection();
-      }, 3000) as unknown as number;
+      }, 3000);
     } catch (error) {
       console.error("Failed to add books:", error);
       errorMessage = String(error);
