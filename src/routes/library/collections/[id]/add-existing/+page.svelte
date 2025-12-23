@@ -105,9 +105,11 @@
       addedCount = selectedBookIds.size;
       showSuccessToast = true;
       
+      // Auto-dismiss toast and navigate after 3 seconds
       setTimeout(() => {
+        showSuccessToast = false;
         goto(`/library/collections/${collectionId}`);
-      }, 1500);
+      }, 3000);
     } catch (error) {
       console.error("Failed to add books:", error);
       errorMessage = String(error);
@@ -115,6 +117,11 @@
     } finally {
       isAdding = false;
     }
+  }
+  
+  function navigateToCollection() {
+    showSuccessToast = false;
+    goto(`/library/collections/${collectionId}`);
   }
 
   async function loadData() {
@@ -253,9 +260,19 @@
     >
       <div class="flex items-center gap-3">
         <CheckCircleSolid class="w-5 h-5 text-green-500" />
-        <div class="text-sm font-normal">
-          Added {addedCount} {addedCount === 1 ? 'book' : 'books'} to collection!
+        <div class="flex-1">
+          <div class="text-sm font-normal">
+            Added {addedCount} {addedCount === 1 ? 'book' : 'books'} to collection!
+          </div>
         </div>
+        <Button
+          size="xs"
+          color="green"
+          onclick={navigateToCollection}
+          class="ml-2"
+        >
+          View Collection
+        </Button>
       </div>
     </Toast>
   {/if}
