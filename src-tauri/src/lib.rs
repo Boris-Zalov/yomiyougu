@@ -18,12 +18,21 @@ pub use error::AppError;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Initialize logger
+    env_logger::Builder::from_default_env()
+        .filter_level(log::LevelFilter::Info)
+        .init();
+
+    log::info!("Starting yomiyougu application");
+
     tauri::Builder::default()
+        .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             database::connection::init_pool(app.handle())?;
+            log::info!("Database connection pool initialized");
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -36,6 +45,22 @@ pub fn run() {
             commands::complete_setup,
             commands::reset_all_settings,
             commands::reset_setting,
+            // Library commands - collections
+            commands::create_collection,
+            commands::get_collections,
+            commands::get_collection,
+            commands::update_collection,
+            commands::delete_collection,
+            // Library commands - books
+            commands::get_books,
+            commands::get_book,
+            commands::update_book,
+            commands::delete_book,
+            commands::import_book_from_archive,
+            // Library commands - book-collection management
+            commands::set_book_collections,
+            commands::add_book_to_collection,
+            commands::remove_book_from_collection,
         ])
         .run(tauri::generate_context!())
         .expect("Critical error while running tauri application");

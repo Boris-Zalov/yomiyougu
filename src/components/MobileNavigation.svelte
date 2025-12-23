@@ -19,7 +19,7 @@
 
     let activeUrl = $derived(page.url.pathname);
 
-    const containerClass = "fixed bottom-0 left-0 z-50 w-full h-16 bg-white border-t border-gray-200 dark:bg-gray-700 dark:border-gray-600";
+    const containerClass = "fixed bottom-0 left-0 z-50 w-full h-18 bg-white border-t border-gray-200 dark:bg-gray-700 dark:border-gray-600";
     const gridClass = "grid h-full max-w-lg grid-cols-3 mx-auto font-medium";
     
     const itemClass = "inline-flex flex-col items-center justify-center px-5 hover:bg-gray-50 dark:hover:bg-gray-800 group";

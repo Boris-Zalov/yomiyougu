@@ -6,7 +6,7 @@ import tailwindcss from '@tailwindcss/vite';
 const host = process.env.TAURI_DEV_HOST;
 
 // https://vite.dev/config/
-export default defineConfig(async () => ({
+export default defineConfig({
   plugins: [
     tailwindcss(), 
     sveltekit()
@@ -33,4 +33,34 @@ export default defineConfig(async () => ({
       ignored: ["**/src-tauri/**"],
     },
   },
-}));
+
+  // Production build optimizations
+  build: {
+    // Minify for production
+    minify: 'esbuild',
+    // Target modern browsers for smaller bundle
+    target: 'esnext',
+    // Increase chunk size warning limit (Tauri bundles everything)
+    chunkSizeWarningLimit: 1000,
+    rollupOptions: {
+      output: {
+        // Optimize chunk splitting
+        manualChunks: (/** @type {string} */ id) => {
+          if (id.includes('node_modules')) {
+            // Group large dependencies
+            if (id.includes('flowbite')) return 'vendor-flowbite';
+            if (id.includes('fuse.js')) return 'vendor-fuse';
+            return 'vendor';
+          }
+        },
+      },
+    },
+    // Enable source maps only in dev
+    sourcemap: false,
+  },
+
+  // Optimize dependencies
+  optimizeDeps: {
+    include: ['fuse.js', 'flowbite-svelte'],
+  },
+});

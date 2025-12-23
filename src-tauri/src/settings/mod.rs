@@ -6,7 +6,7 @@
 //! - Default values appropriate for manga/comic reading
 
 mod schema;
-mod storage;
+pub mod storage;
 mod types;
 
 pub use schema::*;

@@ -1,6 +1,15 @@
 // @generated automatically by Diesel CLI.
 
 diesel::table! {
+    book_collections (id) {
+        id -> Integer,
+        book_id -> Integer,
+        collection_id -> Integer,
+        added_at -> Timestamp,
+    }
+}
+
+diesel::table! {
     book_settings (id) {
         id -> Integer,
         book_id -> Integer,
@@ -37,7 +46,6 @@ diesel::table! {
         last_read_at -> Nullable<Timestamp>,
         added_at -> Timestamp,
         updated_at -> Timestamp,
-        collection_id -> Nullable<Integer>,
         is_favorite -> Bool,
         reading_status -> Text,
     }
@@ -48,14 +56,20 @@ diesel::table! {
         id -> Integer,
         name -> Text,
         description -> Nullable<Text>,
-        cover_path -> Nullable<Text>,
         created_at -> Timestamp,
         updated_at -> Timestamp,
     }
 }
 
+diesel::joinable!(book_collections -> books (book_id));
+diesel::joinable!(book_collections -> collections (collection_id));
 diesel::joinable!(book_settings -> books (book_id));
 diesel::joinable!(bookmarks -> books (book_id));
-diesel::joinable!(books -> collections (collection_id));
 
-diesel::allow_tables_to_appear_in_same_query!(book_settings, bookmarks, books, collections,);
+diesel::allow_tables_to_appear_in_same_query!(
+    book_collections,
+    book_settings,
+    bookmarks,
+    books,
+    collections,
+);

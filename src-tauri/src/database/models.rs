@@ -3,7 +3,7 @@
 use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::schema::{book_settings, bookmarks, books, collections};
+use crate::schema::{book_collections, book_settings, bookmarks, books, collections};
 
 // ============================================================================
 // COLLECTIONS
@@ -17,7 +17,6 @@ pub struct Collection {
     pub id: i32,
     pub name: String,
     pub description: Option<String>,
-    pub cover_path: Option<String>,
     pub created_at: chrono::NaiveDateTime,
     pub updated_at: chrono::NaiveDateTime,
 }
@@ -28,7 +27,6 @@ pub struct Collection {
 pub struct NewCollection {
     pub name: String,
     pub description: Option<String>,
-    pub cover_path: Option<String>,
 }
 
 /// Collection update (partial)
@@ -37,8 +35,32 @@ pub struct NewCollection {
 pub struct UpdateCollection {
     pub name: Option<String>,
     pub description: Option<Option<String>>,
-    pub cover_path: Option<Option<String>>,
     pub updated_at: Option<chrono::NaiveDateTime>,
+}
+
+// ============================================================================
+// BOOK-COLLECTION JUNCTION
+// ============================================================================
+
+/// Junction table model for many-to-many book-collection relationship
+#[derive(Debug, Clone, Queryable, Identifiable, Selectable, Associations, Serialize, Deserialize)]
+#[diesel(table_name = book_collections)]
+#[diesel(belongs_to(Book))]
+#[diesel(belongs_to(Collection))]
+#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+pub struct BookCollection {
+    pub id: i32,
+    pub book_id: i32,
+    pub collection_id: i32,
+    pub added_at: chrono::NaiveDateTime,
+}
+
+/// New book-collection relationship for insertion
+#[derive(Debug, Insertable, Serialize, Deserialize)]
+#[diesel(table_name = book_collections)]
+pub struct NewBookCollection {
+    pub book_id: i32,
+    pub collection_id: i32,
 }
 
 // ============================================================================
@@ -80,9 +102,10 @@ impl ReadingStatus {
 }
 
 /// Book model for manga/comics
-#[derive(Debug, Clone, Queryable, Identifiable, Selectable, Associations, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Queryable, Identifiable, Selectable, Serialize, Deserialize,
+)]
 #[diesel(table_name = books)]
-#[diesel(belongs_to(Collection))]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
 pub struct Book {
     pub id: i32,
@@ -96,7 +119,6 @@ pub struct Book {
     pub last_read_at: Option<chrono::NaiveDateTime>,
     pub added_at: chrono::NaiveDateTime,
     pub updated_at: chrono::NaiveDateTime,
-    pub collection_id: Option<i32>,
     pub is_favorite: bool,
     pub reading_status: String,
 }
@@ -127,7 +149,6 @@ pub struct NewBook {
     pub file_hash: Option<String>,
     pub title: String,
     pub total_pages: i32,
-    pub collection_id: Option<i32>,
 }
 
 /// Book update (partial)
@@ -139,7 +160,6 @@ pub struct UpdateBook {
     pub total_pages: Option<i32>,
     pub last_read_at: Option<Option<chrono::NaiveDateTime>>,
     pub updated_at: Option<chrono::NaiveDateTime>,
-    pub collection_id: Option<Option<i32>>,
     pub is_favorite: Option<bool>,
     pub reading_status: Option<String>,
 }
@@ -149,7 +169,9 @@ pub struct UpdateBook {
 // ============================================================================
 
 /// Bookmark model for saving specific pages
-#[derive(Debug, Clone, Queryable, Identifiable, Selectable, Associations, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Queryable, Identifiable, Selectable, Associations, Serialize, Deserialize,
+)]
 #[diesel(table_name = bookmarks)]
 #[diesel(belongs_to(Book))]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
@@ -234,7 +256,9 @@ pub enum ReaderBackground {
 }
 
 /// Book-specific settings overrides
-#[derive(Debug, Clone, Queryable, Identifiable, Selectable, Associations, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Queryable, Identifiable, Selectable, Associations, Serialize, Deserialize,
+)]
 #[diesel(table_name = book_settings)]
 #[diesel(belongs_to(Book))]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
@@ -277,12 +301,13 @@ pub struct UpdateBookSettings {
 // DTOs for frontend
 // ============================================================================
 
-/// Book with its settings and collection name
+/// Book with its settings and collection names
 #[derive(Debug, Serialize, Deserialize)]
 pub struct BookWithDetails {
     #[serde(flatten)]
     pub book: Book,
-    pub collection_name: Option<String>,
+    pub collection_names: Vec<String>,
+    pub collection_ids: Vec<i32>,
     pub settings: Option<BookSettings>,
     pub bookmark_count: i64,
 }
@@ -293,4 +318,23 @@ pub struct CollectionWithCount {
     #[serde(flatten)]
     pub collection: Collection,
     pub book_count: i64,
+}
+
+// ============================================================================
+// IMPORT RESULTS
+// ============================================================================
+
+/// Information about a skipped book during import
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkippedBook {
+    pub title: String,
+    pub reason: String,
+    pub existing_book_id: Option<i32>,
+}
+
+/// Result of importing books from an archive
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ImportResult {
+    pub imported: Vec<Book>,
+    pub skipped: Vec<SkippedBook>,
 }

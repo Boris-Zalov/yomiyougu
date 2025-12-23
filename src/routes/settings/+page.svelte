@@ -166,7 +166,7 @@
         <SettingCategoryComponent {category} onchange={handleChange} />
       {/each}
 
-      <div class="pt-4 border-t">
+      <div>
         <Button color="alternative" size="sm" onclick={resetAll}>
           <RefreshOutline class="w-4 h-4 me-2" />
           Reset All to Defaults
