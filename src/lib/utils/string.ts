@@ -6,5 +6,5 @@
  * @returns The string with punctuation removed and whitespace normalized
  */
 export function stripPunctuation(str: string): string {
-  return str.replace(/[^\w\s]|_/g, "").replace(/\s+/g, " ");
+  return str.replace(/[^\w\s]|_/g, "").replace(/\s+/g, " ").trim();
 }
