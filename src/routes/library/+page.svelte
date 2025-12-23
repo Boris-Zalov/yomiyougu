@@ -28,17 +28,13 @@
     type CollectionWithCount,
   } from "$lib";
   import Fuse from "fuse.js";
+  import { stripPunctuation } from "$lib/utils/string";
 
   let isLoading = $state(true);
   let isImporting = $state(false);
   let search = $state("");
   let books = $state<BookWithDetails[]>([]);
   let collections = $state<CollectionWithCount[]>([]);
-
-  // Strip punctuation for search normalization
-  function stripPunctuation(str: string): string {
-    return str.replace(/[^\w\s]|_/g, "").replace(/\s+/g, " ");
-  }
 
   const fuseOptions = {
     threshold: 0.4,

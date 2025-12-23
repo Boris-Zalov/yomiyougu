@@ -20,6 +20,7 @@
   import { libraryApi, type BookWithDetails, type Collection } from "$lib";
   import { getCoverPath } from "$lib/types/library";
   import Fuse from "fuse.js";
+  import { stripPunctuation } from "$lib/utils/string";
 
   let collectionId = $derived(page.params.id);
   let collectionIdNum = $derived(Number(collectionId));
@@ -41,10 +42,6 @@
   let availableBooks = $derived(
     allBooks.filter(book => !book.collection_ids.includes(collectionIdNum))
   );
-
-  function stripPunctuation(str: string): string {
-    return str.replace(/[^\w\s]|_/g, "").replace(/\s+/g, " ");
-  }
 
   const fuseOptions = {
     threshold: 0.4,
