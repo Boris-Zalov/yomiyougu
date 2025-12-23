@@ -20,7 +20,7 @@
   } from "flowbite-svelte-icons";
   import { LibrarySkeleton } from "$skeletons";
   import { BookItem } from "$components/library";
-  import { libraryApi, type BookWithDetails, type Collection, type Book } from "$lib";
+  import { libraryApi, type BookWithDetails, type Collection, type Book, stripPunctuation, fuseOptions } from "$lib";
   import Fuse from "fuse.js";
   import { open } from "@tauri-apps/plugin-dialog";
 
@@ -39,24 +39,6 @@
   let showErrorModal = $state(false);
   let errorMessage = $state("");
   let importedBook = $state<Book | null>(null);
-
-  function stripPunctuation(str: string): string {
-    return str.replace(/[^\w\s]|_/g, "").replace(/\s+/g, " ");
-  }
-
-  const fuseOptions = {
-    threshold: 0.4,
-    ignoreLocation: true,
-    includeScore: true,
-    getFn: (obj: object, path: string | string[]) => {
-      const key = Array.isArray(path) ? path[0] : path;
-      const value = (obj as Record<string, unknown>)[key];
-      if (typeof value === "string") {
-        return stripPunctuation(value);
-      }
-      return value as string;
-    },
-  };
 
   let booksFuse = $derived(
     new Fuse(books, {

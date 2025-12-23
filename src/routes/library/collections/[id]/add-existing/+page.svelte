@@ -17,7 +17,7 @@
     CloseCircleSolid,
   } from "flowbite-svelte-icons";
   import { LibrarySkeleton } from "$skeletons";
-  import { libraryApi, type BookWithDetails, type Collection } from "$lib";
+  import { libraryApi, type BookWithDetails, type Collection, stripPunctuation, fuseOptions } from "$lib";
   import { getCoverPath } from "$lib/types/library";
   import Fuse from "fuse.js";
 
@@ -41,24 +41,6 @@
   let availableBooks = $derived(
     allBooks.filter(book => !book.collection_ids.includes(collectionIdNum))
   );
-
-  function stripPunctuation(str: string): string {
-    return str.replace(/[^\w\s]|_/g, "").replace(/\s+/g, " ");
-  }
-
-  const fuseOptions = {
-    threshold: 0.4,
-    ignoreLocation: true,
-    includeScore: true,
-    getFn: (obj: object, path: string | string[]) => {
-      const key = Array.isArray(path) ? path[0] : path;
-      const value = (obj as Record<string, unknown>)[key];
-      if (typeof value === "string") {
-        return stripPunctuation(value);
-      }
-      return value as string;
-    },
-  };
 
   let booksFuse = $derived(
     new Fuse(availableBooks, {
