@@ -12,6 +12,9 @@ pub mod operations;
 #[cfg(test)]
 mod tests;
 
+#[cfg(test)]
+mod tests;
+
 pub use connection::{establish_connection, DbPool};
 pub use models::*;
 pub use operations::*;
