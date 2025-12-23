@@ -23,6 +23,7 @@
   import { libraryApi, type BookWithDetails, type Collection, type Book } from "$lib";
   import Fuse from "fuse.js";
   import { open } from "@tauri-apps/plugin-dialog";
+  import { stripPunctuation } from "$lib/utils/string";
 
   let collectionId = $derived(page.params.id);
 
@@ -39,10 +40,6 @@
   let showErrorModal = $state(false);
   let errorMessage = $state("");
   let importedBook = $state<Book | null>(null);
-
-  function stripPunctuation(str: string): string {
-    return str.replace(/[^\w\s]|_/g, "").replace(/\s+/g, " ");
-  }
 
   const fuseOptions = {
     threshold: 0.4,
