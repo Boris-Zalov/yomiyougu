@@ -8,3 +8,4 @@ export * as libraryApi from "./services/library";
 
 // Utils
 export * from "./utils/theme";
+export * from "./utils/search";
