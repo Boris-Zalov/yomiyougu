@@ -114,6 +114,14 @@ pub struct SelectOption {
 }
 
 impl SelectOption {
+    pub fn new(value: impl Into<String>, label: impl Into<String>) -> Self {
+        Self {
+            value: value.into(),
+            label: label.into(),
+            description: None,
+        }
+    }
+
     pub fn with_description(
         value: impl Into<String>,
         label: impl Into<String>,

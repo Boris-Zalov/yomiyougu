@@ -14,16 +14,19 @@
 
   interface Props {
     options: Option[];
-    value: string;
+    value: string | null;
     onchange?: (value: string) => void;
     displayValue?: string;
   }
 
   let { options, value = $bindable(), onchange, displayValue }: Props = $props();
 
+  // Unique ID for dropdown trigger to avoid conflicts between multiple instances
+  const dropdownId = crypto.randomUUID();
+
   // Find the current option to display its label
   let currentLabel = $derived(
-    displayValue ?? options.find((opt) => opt.value === value)?.label ?? value
+    displayValue ?? (value ? options.find((opt) => opt.value === value)?.label : null) ?? value ?? "Select..."
   );
 
   function handleChange(newValue: string) {
@@ -33,11 +36,11 @@
 </script>
 
 <div class="inline-block relative">
-  <Button color="alternative" class="justify-between dropdown-trigger">
+  <Button color="alternative" class="justify-between dropdown-{dropdownId}">
     {currentLabel}
     <ChevronDownOutline class="ms-2 h-4 w-4" />
   </Button>
-  <Dropdown class="list-none" triggeredBy=".dropdown-trigger" placement="bottom-start">
+  <Dropdown class="list-none" triggeredBy=".dropdown-{dropdownId}" placement="bottom-start">
     {#each options as option (option.value)}
       <DropdownItem class="list-none">
         <Radio

@@ -2,18 +2,22 @@
     import type { BookWithDetails } from '$lib/types/library';
     import { getCoverPath, calculateProgress } from '$lib/types/library';
     import { Progressbar, Badge, Dropdown, DropdownItem, DropdownDivider } from 'flowbite-svelte';
-    import { HeartSolid, HeartOutline, ClockOutline, ImageOutline, DotsVerticalOutline, EditOutline, TrashBinOutline } from 'flowbite-svelte-icons';
+    import { HeartSolid, HeartOutline, ClockOutline, ImageOutline, DotsVerticalOutline, EditOutline, TrashBinOutline, CloseOutline } from 'flowbite-svelte-icons';
 
     let { 
         book, 
         onclick,
         ontogglefavorite,
-        ondelete
+        ondelete,
+        onremovefromcollection,
+        collectionName
     }: { 
         book: BookWithDetails; 
         onclick?: () => void;
         ontogglefavorite?: (book: BookWithDetails) => void;
         ondelete?: (book: BookWithDetails) => void;
+        onremovefromcollection?: (book: BookWithDetails) => void;
+        collectionName?: string;
     } = $props();
     
     // Unique ID for dropdown trigger to avoid conflicts between multiple items
@@ -60,6 +64,12 @@
         e.preventDefault();
         e.stopPropagation();
         ondelete?.(book);
+    }
+
+    function handleRemoveFromCollection(e: Event) {
+        e.preventDefault();
+        e.stopPropagation();
+        onremovefromcollection?.(book);
     }
 
     const progress = $derived(calculateProgress(book));
@@ -125,6 +135,15 @@
             Edit
         </DropdownItem>
         <DropdownDivider />
+        {#if onremovefromcollection && collectionName}
+        <DropdownItem 
+            onclick={handleRemoveFromCollection}
+            class="flex items-center gap-2 text-orange-600 dark:text-orange-500"
+        >
+            <CloseOutline class="w-4 h-4" />
+            Remove from {collectionName}
+        </DropdownItem>
+        {/if}
         <DropdownItem 
             onclick={handleDelete}
             class="flex items-center gap-2 text-red-600 dark:text-red-500"

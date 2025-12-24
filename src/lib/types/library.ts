@@ -37,7 +37,6 @@ export interface BookSettings {
 	reading_direction: string | null;
 	page_display_mode: string | null;
 	image_fit_mode: string | null;
-	reader_background: string | null;
 	sync_progress: boolean | null;
 	updated_at: string;
 }

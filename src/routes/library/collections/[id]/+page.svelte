@@ -9,6 +9,7 @@
     Modal,
     Spinner,
     Toast,
+    P,
   } from "flowbite-svelte";
   import {
     ArrowLeftOutline,
@@ -17,6 +18,7 @@
     CheckCircleSolid,
     BookSolid,
     UploadOutline,
+    TrashBinOutline,
   } from "flowbite-svelte-icons";
   import { LibrarySkeleton } from "$skeletons";
   import { BookItem } from "$components/library";
@@ -39,6 +41,14 @@
   let showErrorModal = $state(false);
   let errorMessage = $state("");
   let importedBook = $state<Book | null>(null);
+
+  let showDeleteBookModal = $state(false);
+  let bookToDelete = $state<BookWithDetails | null>(null);
+  let isDeleting = $state(false);
+
+  let showRemoveFromCollectionModal = $state(false);
+  let bookToRemove = $state<BookWithDetails | null>(null);
+  let isRemoving = $state(false);
 
   function stripPunctuation(str: string): string {
     return str.replace(/[^\w\s]|_/g, "").replace(/\s+/g, " ");
@@ -143,6 +153,62 @@
     }
     isLoading = false;
   });
+
+  // Toggle favorite for a book
+  async function handleToggleFavorite(book: BookWithDetails) {
+    try {
+      const updatedBook = await libraryApi.toggleFavorite(book);
+      // Update the book in the local state
+      books = books.map((b) =>
+        b.id === updatedBook.id ? { ...b, is_favorite: updatedBook.is_favorite } : b
+      );
+    } catch (err) {
+      console.error("Failed to toggle favorite:", err);
+      showError(parseError(err));
+    }
+  }
+
+  function confirmDeleteBook(book: BookWithDetails) {
+    bookToDelete = book;
+    showDeleteBookModal = true;
+  }
+
+  async function handleDeleteBook() {
+    if (!bookToDelete) return;
+    isDeleting = true;
+    try {
+      await libraryApi.deleteBook(bookToDelete.id);
+      books = books.filter((b) => b.id !== bookToDelete!.id);
+      showDeleteBookModal = false;
+      bookToDelete = null;
+    } catch (err) {
+      console.error("Failed to delete book:", err);
+      showError(parseError(err));
+    } finally {
+      isDeleting = false;
+    }
+  }
+
+  function confirmRemoveFromCollection(book: BookWithDetails) {
+    bookToRemove = book;
+    showRemoveFromCollectionModal = true;
+  }
+
+  async function handleRemoveFromCollection() {
+    if (!bookToRemove || !collection) return;
+    isRemoving = true;
+    try {
+      await libraryApi.removeBookFromCollection(bookToRemove.id, collection.id);
+      books = books.filter((b) => b.id !== bookToRemove!.id);
+      showRemoveFromCollectionModal = false;
+      bookToRemove = null;
+    } catch (err) {
+      console.error("Failed to remove book from collection:", err);
+      showError(parseError(err));
+    } finally {
+      isRemoving = false;
+    }
+  }
 </script>
 {#if isLoading}
   <LibrarySkeleton />
@@ -216,7 +282,13 @@
       {/if}
 
       {#each filteredBooks as book (book.id)}
-        <BookItem {book} />
+        <BookItem 
+          {book} 
+          ontogglefavorite={handleToggleFavorite}
+          ondelete={confirmDeleteBook}
+          onremovefromcollection={confirmRemoveFromCollection}
+          collectionName={collection.name}
+        />
       {:else}
         {#if search.trim()}
           <div class="col-span-full py-12 text-center">
@@ -289,7 +361,7 @@
 </Modal>
 
 <!-- Success Modal -->
-<Modal bind:open={showResultModal} size="xs" class="w-full">
+<Modal bind:open={showResultModal} size="md" class="w-full">
   <div class="text-center">
     <CheckCircleSolid class="mx-auto mb-4 h-12 w-12 text-green-500" />
     <h3 class="mb-5 text-lg font-normal text-gray-500 dark:text-gray-400">
@@ -307,7 +379,7 @@
 </Modal>
 
 <!-- Error Modal -->
-<Modal bind:open={showErrorModal} size="xs" class="w-full">
+<Modal bind:open={showErrorModal} size="md" class="w-full">
   <div class="text-center">
     <CloseCircleSolid class="mx-auto mb-4 h-12 w-12 text-red-500" />
     <h3 class="mb-5 text-lg font-normal text-gray-500 dark:text-gray-400">
@@ -319,5 +391,79 @@
     <Button color="red" onclick={() => (showErrorModal = false)}>
       Close
     </Button>
+  </div>
+</Modal>
+
+<!-- Delete Book Confirmation Modal -->
+<Modal bind:open={showDeleteBookModal} size="md" autoclose={false}>
+  <div class="text-center">
+    <TrashBinOutline class="mx-auto mb-4 w-12 h-12 text-red-500 dark:text-red-400" />
+    <h3 class="mb-5 text-lg font-normal text-gray-500 dark:text-gray-400">
+      Delete Book
+    </h3>
+    {#if bookToDelete}
+      <P class="mb-6 text-sm text-gray-600 dark:text-gray-300">
+        Are you sure you want to delete <strong>{bookToDelete.title}</strong>? This action cannot be undone.
+      </P>
+    {/if}
+    <div class="flex justify-center gap-4">
+      <Button
+        color="red"
+        onclick={handleDeleteBook}
+        disabled={isDeleting}
+      >
+        {#if isDeleting}
+          <Spinner size="4" class="mr-2" />
+        {/if}
+        Delete
+      </Button>
+      <Button
+        color="alternative"
+        onclick={() => {
+          showDeleteBookModal = false;
+          bookToDelete = null;
+        }}
+        disabled={isDeleting}
+      >
+        Cancel
+      </Button>
+    </div>
+  </div>
+</Modal>
+
+<!-- Remove from Collection Confirmation Modal -->
+<Modal bind:open={showRemoveFromCollectionModal} size="md" autoclose={false}>
+  <div class="text-center">
+    <CloseCircleSolid class="mx-auto mb-4 w-12 h-12 text-orange-500 dark:text-orange-400" />
+    <h3 class="mb-5 text-lg font-normal text-gray-500 dark:text-gray-400">
+      Remove from Collection
+    </h3>
+    {#if bookToRemove && collection}
+      <P class="mb-6 text-sm text-gray-600 dark:text-gray-300">
+        Remove <strong>{bookToRemove.title}</strong> from <strong>{collection.name}</strong>? The book will remain in your library.
+      </P>
+    {/if}
+    <div class="flex justify-center gap-4">
+      <Button
+        color="yellow"
+        onclick={handleRemoveFromCollection}
+        disabled={isRemoving}
+      >
+        {#if isRemoving}
+          <Spinner size="4" class="mr-2" />
+        {/if}
+        Remove
+      </Button>
+      <Button
+        color="alternative"
+        onclick={() => {
+          showRemoveFromCollectionModal = false;
+          bookToRemove = null;
+        }}
+        disabled={isRemoving}
+      >
+        Cancel
+      </Button>
+    </div>
   </div>
 </Modal>
