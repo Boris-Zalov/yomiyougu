@@ -131,14 +131,33 @@ pub fn update_collection(
 }
 
 /// Delete a collection (soft delete - sets deleted_at)
+/// Also modifies the name to avoid UNIQUE constraint conflicts with new collections
 pub fn delete_collection(collection_id: i32) -> Result<(), AppError> {
     info!("Soft-deleting collection ID: {}", collection_id);
     let mut conn = establish_connection()?;
 
     let now = chrono::Utc::now().naive_utc();
+    let timestamp = now.and_utc().timestamp();
+    
+    // Get current name to modify it
+    let collection: Collection = collections::table
+        .find(collection_id)
+        .select(Collection::as_select())
+        .first(&mut conn)
+        .map_err(|e| {
+            error!("Failed to find collection {}: {}", collection_id, e);
+            AppError::new(
+                ErrorCode::DatabaseQueryFailed,
+                format!("Failed to find collection: {}", e),
+            )
+        })?;
+    
+    // Append deletion timestamp to name to free up the name for reuse
+    let deleted_name = format!("{}__deleted_{}", collection.name, timestamp);
     
     diesel::update(collections::table.find(collection_id))
         .set((
+            collections::name.eq(deleted_name),
             collections::deleted_at.eq(Some(now)),
             collections::updated_at.eq(now),
         ))

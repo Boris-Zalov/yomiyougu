@@ -13,15 +13,17 @@
     Textarea,
     Helper,
     Tooltip,
+    P,
   } from "flowbite-svelte";
   import {
     PlusOutline,
     CheckCircleSolid,
     CloseCircleSolid,
     RefreshOutline,
+    TrashBinOutline,
   } from "flowbite-svelte-icons";
   import { LibrarySkeleton } from "$skeletons";
-  import { BookItem } from "$components/library";
+  import { BookItem, CollectionItem } from "$components/library";
   import { open } from "@tauri-apps/plugin-dialog";
   import {
     libraryApi,
@@ -108,6 +110,13 @@
   let newCollectionName = $state("");
   let newCollectionDescription = $state("");
   let collectionNameError = $state("");
+
+  // Delete confirmation state
+  let showDeleteBookModal = $state(false);
+  let showDeleteCollectionModal = $state(false);
+  let bookToDelete = $state<BookWithDetails | null>(null);
+  let collectionToDelete = $state<CollectionWithCount | null>(null);
+  let isDeleting = $state(false);
 
   function parseError(error: unknown): string {
     const errorStr = String(error);
@@ -219,6 +228,68 @@
     }
   }
 
+  // Toggle favorite for a book
+  async function handleToggleFavorite(book: BookWithDetails) {
+    try {
+      const updatedBook = await libraryApi.toggleFavorite(book);
+      // Update the book in the local state
+      books = books.map((b) =>
+        b.id === updatedBook.id ? { ...b, is_favorite: updatedBook.is_favorite } : b
+      );
+    } catch (error) {
+      console.error("Failed to toggle favorite:", error);
+      showError(parseError(error));
+    }
+  }
+
+  // Show delete book confirmation
+  function confirmDeleteBook(book: BookWithDetails) {
+    bookToDelete = book;
+    showDeleteBookModal = true;
+  }
+
+  // Delete a book
+  async function handleDeleteBook() {
+    if (!bookToDelete) return;
+    
+    isDeleting = true;
+    try {
+      await libraryApi.deleteBook(bookToDelete.id);
+      books = books.filter((b) => b.id !== bookToDelete!.id);
+      showDeleteBookModal = false;
+      bookToDelete = null;
+    } catch (error) {
+      console.error("Failed to delete book:", error);
+      showError(parseError(error));
+    } finally {
+      isDeleting = false;
+    }
+  }
+
+  // Show delete collection confirmation
+  function confirmDeleteCollection(collection: CollectionWithCount) {
+    collectionToDelete = collection;
+    showDeleteCollectionModal = true;
+  }
+
+  // Delete a collection
+  async function handleDeleteCollection() {
+    if (!collectionToDelete) return;
+    
+    isDeleting = true;
+    try {
+      await libraryApi.deleteCollection(collectionToDelete.id);
+      collections = collections.filter((c) => c.id !== collectionToDelete!.id);
+      showDeleteCollectionModal = false;
+      collectionToDelete = null;
+    } catch (error) {
+      console.error("Failed to delete collection:", error);
+      showError(parseError(error));
+    } finally {
+      isDeleting = false;
+    }
+  }
+
   async function handleSync() {
     isSyncing = true;
     syncStatusText = "Syncing...";
@@ -314,24 +385,10 @@
       {/if}
 
       {#each filteredCollections as collection (collection.id)}
-        <a href={`/library/collections/${collection.id}`}>
-          <div class="relative group">
-            <div
-              class="w-full aspect-2/3 rounded-lg bg-linear-to-br from-primary-500 to-primary-700 dark:from-primary-600 dark:to-primary-800 flex items-center justify-center cursor-pointer hover:opacity-90 transition-opacity"
-            >
-              <span
-                class="text-white text-center px-2 font-medium text-sm line-clamp-3"
-                >{collection.name}</span
-              >
-            </div>
-            <div
-              class="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-xs text-center py-1 rounded-b-lg"
-            >
-              {collection.book_count}
-              {collection.book_count === 1 ? "book" : "books"}
-            </div>
-          </div>
-          </a>
+        <CollectionItem 
+          {collection} 
+          ondelete={confirmDeleteCollection}
+        />
       {:else}
         {#if search.trim()}
           <p
@@ -373,7 +430,11 @@
       {/if}
 
       {#each filteredBooks as book (book.id)}
-        <BookItem {book} />
+        <BookItem 
+          {book} 
+          ontogglefavorite={handleToggleFavorite}
+          ondelete={confirmDeleteBook}
+        />
       {:else}
         {#if search.trim()}
           <p
@@ -408,9 +469,9 @@
       }}
       class="space-y-4"
     >
-      <h3 class="text-lg font-medium text-gray-900 dark:text-white">
+      <Heading tag="h3" class="text-lg font-medium">
         Create New Collection
-      </h3>
+      </Heading>
 
       <div>
         <Label for="collection-name" class="mb-2">Name</Label>
@@ -473,13 +534,13 @@
       <CheckCircleSolid
         class="mx-auto mb-4 w-12 h-12 text-green-500 dark:text-green-400"
       />
-      <h3 class="mb-5 text-lg font-normal text-gray-900 dark:text-white">
+      <Heading tag="h3" class="mb-5 text-lg font-normal">
         Import Complete
-      </h3>
+      </Heading>
       <div class="mb-6 text-sm text-gray-600 dark:text-gray-300">
         {#if importedBook}
-          <p>Successfully added "<strong>{importedBook.title}</strong>"</p>
-          <p class="mt-2 text-gray-500">{importedBook.total_pages} pages</p>
+          <P>Successfully added "<strong>{importedBook.title}</strong>"</P>
+          <P class="mt-2 text-gray-500">{importedBook.total_pages} pages</P>
         {/if}
       </div>
       <Button color="red" class="w-full">Close</Button>
@@ -492,13 +553,89 @@
       <CloseCircleSolid
         class="mx-auto mb-4 w-12 h-12 text-red-500 dark:text-red-400"
       />
-      <h3 class="mb-5 text-lg font-normal text-gray-900 dark:text-white">
+      <Heading tag="h3" class="mb-5 text-lg font-normal">
         Error
-      </h3>
-      <div class="mb-6 text-sm text-gray-600 dark:text-gray-300">
-        <p>{errorMessage}</p>
-      </div>
+      </Heading>
+      <P size="sm" class="mb-6 text-gray-600 dark:text-gray-300">
+        {errorMessage}
+      </P>
       <Button color="red" class="w-full">Close</Button>
+    </div>
+  </Modal>
+
+  <!-- Delete Book Confirmation Modal -->
+  <Modal bind:open={showDeleteBookModal} size="xs">
+    <div class="text-center">
+      <TrashBinOutline
+        class="mx-auto mb-4 w-12 h-12 text-red-500 dark:text-red-400"
+      />
+      <Heading tag="h3" class="mb-2 text-lg font-medium">
+        Delete Book
+      </Heading>
+      <P size="sm" class="mb-5 text-gray-500 dark:text-gray-400">
+        Are you sure you want to delete "<strong>{bookToDelete?.title}</strong>"? This action cannot be undone.
+      </P>
+      <div class="flex gap-3">
+        <Button
+          color="alternative"
+          class="flex-1"
+          onclick={() => { showDeleteBookModal = false; bookToDelete = null; }}
+          disabled={isDeleting}
+        >
+          Cancel
+        </Button>
+        <Button
+          color="red"
+          class="flex-1"
+          onclick={handleDeleteBook}
+          disabled={isDeleting}
+        >
+          {#if isDeleting}
+            <Spinner size="4" class="mr-2" />
+            Deleting...
+          {:else}
+            Delete
+          {/if}
+        </Button>
+      </div>
+    </div>
+  </Modal>
+
+  <!-- Delete Collection Confirmation Modal -->
+  <Modal bind:open={showDeleteCollectionModal} size="xs">
+    <div class="text-center">
+      <TrashBinOutline
+        class="mx-auto mb-4 w-12 h-12 text-red-500 dark:text-red-400"
+      />
+      <Heading tag="h3" class="mb-2 text-lg font-medium">
+        Delete Collection
+      </Heading>
+      <P size="sm" class="mb-5 text-gray-500 dark:text-gray-400">
+        Are you sure you want to delete the collection "<strong>{collectionToDelete?.name}</strong>"? Books in this collection will not be deleted.
+      </P>
+      <div class="flex gap-3">
+        <Button
+          color="alternative"
+          class="flex-1"
+          onclick={() => { showDeleteCollectionModal = false; collectionToDelete = null; }}
+          disabled={isDeleting}
+        >
+          Cancel
+        </Button>
+        <Button
+          color="red"
+          class="flex-1"
+          onclick={handleDeleteCollection}
+          disabled={isDeleting}
+        >
+          {#if isDeleting}
+            <Spinner size="4" class="mr-2" />
+            Deleting...
+          {:else}
+            Delete
+          {/if}
+        </Button>
+      </div>
     </div>
   </Modal>
 {/if}
