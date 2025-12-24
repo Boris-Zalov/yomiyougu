@@ -7,8 +7,8 @@ use tauri::{AppHandle, Manager};
 use tauri_plugin_fs::FsExt;
 
 use crate::database::models::{
-    Book, BookWithDetails, Collection, CollectionWithCount, NewCollection,
-    UpdateBook, UpdateCollection,
+    Book, BookWithDetails, Collection, CollectionWithCount, NewCollection, UpdateBook,
+    UpdateCollection,
 };
 use crate::database::operations;
 use crate::error::AppError;
@@ -24,9 +24,10 @@ pub async fn create_collection(
     name: String,
     description: Option<String>,
 ) -> Result<Collection, String> {
-    let new_collection = NewCollection {
-        name,
+    let new_collection = NewCollection { 
+        name, 
         description,
+        uuid: Some(uuid::Uuid::new_v4().to_string()),
     };
 
     operations::create_collection(new_collection).map_err(|e| e.into())
@@ -114,19 +115,13 @@ pub async fn update_book(
 
 /// Set the collections for a book (replaces existing)
 #[tauri::command]
-pub async fn set_book_collections(
-    book_id: i32,
-    collection_ids: Vec<i32>,
-) -> Result<(), String> {
+pub async fn set_book_collections(book_id: i32, collection_ids: Vec<i32>) -> Result<(), String> {
     operations::set_book_collections(book_id, collection_ids).map_err(|e| e.into())
 }
 
 /// Add a book to a collection
 #[tauri::command]
-pub async fn add_book_to_collection(
-    book_id: i32,
-    collection_id: i32,
-) -> Result<(), String> {
+pub async fn add_book_to_collection(book_id: i32, collection_id: i32) -> Result<(), String> {
     operations::add_book_to_collection(book_id, collection_id)
         .map(|_| ())
         .map_err(|e| e.into())
@@ -134,10 +129,7 @@ pub async fn add_book_to_collection(
 
 /// Remove a book from a collection
 #[tauri::command]
-pub async fn remove_book_from_collection(
-    book_id: i32,
-    collection_id: i32,
-) -> Result<(), String> {
+pub async fn remove_book_from_collection(book_id: i32, collection_id: i32) -> Result<(), String> {
     operations::remove_book_from_collection(book_id, collection_id).map_err(|e| e.into())
 }
 
@@ -159,8 +151,8 @@ pub async fn import_book_from_archive(
     use std::io::{Read, Write};
 
     let settings = storage::load_settings(&app).map_err(|e: AppError| e)?;
-    let backup_files = settings
-        .get("library.backup_imported_files")
+    let save_to_app_storage = settings
+        .get("library.save_to_app_storage")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
 
@@ -180,23 +172,38 @@ pub async fn import_book_from_archive(
     // Determine if this is an Android content URI or a regular file path
     let is_content_uri = file_path.starts_with("content://");
 
+    // For Android content URIs, file MUST be saved to app storage because the cache is temporary
+    // and content URIs can't be referenced later (system restriction)
+    let effective_save_to_storage = if is_content_uri { true } else { save_to_app_storage };
+
     // Get the actual file path to process
     let (archive_path, temp_file_path) = if is_content_uri {
-        log::info!("Processing Android content URI: {}", &file_path[..80.min(file_path.len())]);
+        log::info!(
+            "Processing Android content URI: {}",
+            &file_path[..80.min(file_path.len())]
+        );
 
         log::info!("Creating cache directory: {:?}", cache_dir);
         if let Err(e) = std::fs::create_dir_all(&cache_dir) {
-            return Err(format!("Failed to create cache directory {:?}: {}", cache_dir, e));
+            return Err(format!(
+                "Failed to create cache directory {:?}: {}",
+                cache_dir, e
+            ));
         }
-        
+
         if !cache_dir.exists() {
-            return Err(format!("Cache directory doesn't exist after creation: {:?}", cache_dir));
+            return Err(format!(
+                "Cache directory doesn't exist after creation: {:?}",
+                cache_dir
+            ));
         }
         log::info!("Cache directory verified: {:?}", cache_dir);
 
         let fs_scope = app.fs_scope();
-        
-        fs_scope.allow_file(&file_path).map_err(|e| format!("Failed to allow file access: {}", e))?;
+
+        fs_scope
+            .allow_file(&file_path)
+            .map_err(|e| format!("Failed to allow file access: {}", e))?;
 
         let file_url = tauri::Url::parse(&file_path)
             .map_err(|e| format!("Failed to parse content URI: {}", e))?;
@@ -204,20 +211,23 @@ pub async fn import_book_from_archive(
         log::debug!("Opening content URI...");
         let mut file = app
             .fs()
-            .open(file_url, tauri_plugin_fs::OpenOptions::new().read(true).clone())
+            .open(
+                file_url,
+                tauri_plugin_fs::OpenOptions::new().read(true).clone(),
+            )
             .map_err(|e| format!("Failed to open file: {}", e))?;
 
         let mut content = Vec::new();
         file.read_to_end(&mut content)
             .map_err(|e| format!("Failed to read file content: {}", e))?;
-        
+
         log::info!("Read {} bytes from content URI", content.len());
 
-        let filename = original_filename.clone().unwrap_or_else(|| {
-            format!("import_{}.cbz", chrono::Utc::now().timestamp_millis())
-        });
+        let filename = original_filename
+            .clone()
+            .unwrap_or_else(|| format!("import_{}.cbz", chrono::Utc::now().timestamp_millis()));
         let temp_path = cache_dir.join(&filename);
-        
+
         log::debug!("Writing to temp file: {:?}", temp_path);
 
         let mut temp_file = std::fs::File::create(&temp_path)
@@ -243,7 +253,10 @@ pub async fn import_book_from_archive(
         .and_then(|s| s.to_str())
         .map(|s| s.to_lowercase());
 
-    if !matches!(ext.as_deref(), Some("zip") | Some("cbz") | Some("rar") | Some("cbr")) {
+    if !matches!(
+        ext.as_deref(),
+        Some("zip") | Some("cbz") | Some("rar") | Some("cbr")
+    ) {
         // Clean up temp file
         if let Some(ref temp_path) = temp_file_path {
             let _ = std::fs::remove_file(temp_path);
@@ -251,24 +264,28 @@ pub async fn import_book_from_archive(
         return Err("Only .zip, .cbz, .rar, and .cbr files are supported".into());
     }
 
-    if backup_files {
+    if effective_save_to_storage {
         std::fs::create_dir_all(&library_dir)
             .map_err(|e| format!("Failed to create library directory: {}", e))?;
     }
 
     // Run blocking I/O operations on a separate thread
     let result = tauri::async_runtime::spawn_blocking(move || {
-        operations::import_book_from_archive(&archive_path, collection_id, backup_files, &library_dir, original_filename)
-            .map_err(|e| e.into())
+        operations::import_book_from_archive(
+            &archive_path,
+            collection_id,
+            effective_save_to_storage,
+            &library_dir,
+            original_filename,
+        )
+        .map_err(|e| e.into())
     })
     .await
     .map_err(|e| format!("Task failed: {}", e))?;
 
     if let Some(temp_path) = temp_file_path {
-        if !backup_files {
-            let _ = std::fs::remove_file(&temp_path);
-            log::debug!("Cleaned up temp file: {:?}", temp_path);
-        }
+        let _ = std::fs::remove_file(&temp_path);
+        log::debug!("Cleaned up temp file: {:?}", temp_path);
     }
 
     result

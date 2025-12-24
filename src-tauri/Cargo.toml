@@ -37,11 +37,19 @@ zip = "2.2"
 sha2 = "0.10"
 log = "0.4"
 env_logger = "0.11"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "multipart"] }
+rand = "0.8"
+base64 = "0.22"
+tokio = { version = "1", features = ["net", "io-util", "time", "sync"] }
+argon2 = "0.4"
+uuid = { version = "1", features = ["v4", "serde"] }
+thiserror = "2"
 
 # Bundle SQLite for Android/iOS (no system library available)
 libsqlite3-sys = { version = "0.35", features = ["bundled"] }
 tauri-plugin-fs = "2"
 urlencoding = "2.1.3"
+tauri-plugin-stronghold = "2"
 
 # !! RAR support (desktop only - unrar crate doesn't compile for Android NDK) !!
 [target.'cfg(not(target_os = "android"))'.dependencies]
@@ -63,3 +71,7 @@ rustflags = ["-Cdebuginfo=0", "-Zthreads=8"] # Better compile performance.
 # Optimize all dependencies even in dev mode for faster runtime
 [profile.dev.package."*"]
 opt-level = 2
+
+# Stronghold optimization - fixes upstream bug
+[profile.dev.package.scrypt]
+opt-level = 3
