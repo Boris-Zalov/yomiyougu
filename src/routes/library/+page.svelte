@@ -14,6 +14,8 @@
     Helper,
     Tooltip,
     P,
+    Dropdown,
+    DropdownItem,
   } from "flowbite-svelte";
   import {
     PlusOutline,
@@ -21,6 +23,10 @@
     CloseCircleSolid,
     RefreshOutline,
     TrashBinOutline,
+    ChevronDownOutline,
+    ArrowUpOutline,
+    ArrowDownOutline,
+    ArrowSortLettersOutline,
   } from "flowbite-svelte-icons";
   import { LibrarySkeleton } from "$skeletons";
   import { BookItem, CollectionItem } from "$components/library";
@@ -44,6 +50,92 @@
   let search = $state("");
   let books = $state<BookWithDetails[]>([]);
   let collections = $state<CollectionWithCount[]>([]);
+
+  // Sorting state
+  type SortField = "name" | "date_added" | "book_count";
+  type BookSortField = "title" | "date_added" | "last_read" | "progress";
+  type SortDirection = "asc" | "desc";
+
+  let collectionSortField = $state<SortField>("name");
+  let collectionSortDirection = $state<SortDirection>("asc");
+  let bookSortField = $state<BookSortField>("title");
+  let bookSortDirection = $state<SortDirection>("asc");
+
+  const collectionSortOptions: { value: SortField; label: string }[] = [
+    { value: "name", label: "Name" },
+    { value: "date_added", label: "Date Added" },
+    { value: "book_count", label: "Book Count" },
+  ];
+
+  const bookSortOptions: { value: BookSortField; label: string }[] = [
+    { value: "title", label: "Title" },
+    { value: "date_added", label: "Date Added" },
+    { value: "last_read", label: "Last Read" },
+    { value: "progress", label: "Progress" },
+  ];
+
+  function getCollectionSortLabel(): string {
+    return collectionSortOptions.find((o) => o.value === collectionSortField)?.label ?? "Sort";
+  }
+
+  function getBookSortLabel(): string {
+    return bookSortOptions.find((o) => o.value === bookSortField)?.label ?? "Sort";
+  }
+
+  function toggleCollectionSortDirection() {
+    collectionSortDirection = collectionSortDirection === "asc" ? "desc" : "asc";
+  }
+
+  function toggleBookSortDirection() {
+    bookSortDirection = bookSortDirection === "asc" ? "desc" : "asc";
+  }
+
+  function sortCollections(items: CollectionWithCount[]): CollectionWithCount[] {
+    const sorted = [...items];
+    const dir = collectionSortDirection === "asc" ? 1 : -1;
+    
+    switch (collectionSortField) {
+      case "name":
+        sorted.sort((a, b) => dir * a.name.localeCompare(b.name));
+        break;
+      case "date_added":
+        sorted.sort((a, b) => dir * (new Date(a.created_at).getTime() - new Date(b.created_at).getTime()));
+        break;
+      case "book_count":
+        sorted.sort((a, b) => dir * (a.book_count - b.book_count));
+        break;
+    }
+    return sorted;
+  }
+
+  function sortBooks(items: BookWithDetails[]): BookWithDetails[] {
+    const sorted = [...items];
+    const dir = bookSortDirection === "asc" ? 1 : -1;
+    
+    switch (bookSortField) {
+      case "title":
+        sorted.sort((a, b) => dir * a.title.localeCompare(b.title));
+        break;
+      case "date_added":
+        sorted.sort((a, b) => dir * (new Date(a.added_at).getTime() - new Date(b.added_at).getTime()));
+        break;
+      case "last_read":
+        sorted.sort((a, b) => {
+          const aTime = a.last_read_at ? new Date(a.last_read_at).getTime() : 0;
+          const bTime = b.last_read_at ? new Date(b.last_read_at).getTime() : 0;
+          return dir * (aTime - bTime);
+        });
+        break;
+      case "progress":
+        sorted.sort((a, b) => {
+          const aProgress = a.total_pages > 0 ? a.current_page / a.total_pages : 0;
+          const bProgress = b.total_pages > 0 ? b.current_page / b.total_pages : 0;
+          return dir * (aProgress - bProgress);
+        });
+        break;
+    }
+    return sorted;
+  }
 
   // Strip punctuation for search normalization
   function stripPunctuation(str: string): string {
@@ -81,23 +173,17 @@
   let filteredCollections = $derived.by(() => {
     const query = stripPunctuation(search.trim());
     if (!query) {
-      return [...collections].sort((a, b) => a.name.localeCompare(b.name));
+      return sortCollections(collections);
     }
-    return collectionsFuse
-      .search(query)
-      .map((result) => result.item)
-      .sort((a, b) => a.name.localeCompare(b.name));
+    return sortCollections(collectionsFuse.search(query).map((result) => result.item));
   });
 
   let filteredBooks = $derived.by(() => {
     const query = stripPunctuation(search.trim());
     if (!query) {
-      return [...books].sort((a, b) => a.title.localeCompare(b.title));
+      return sortBooks(books);
     }
-    return booksFuse
-      .search(query)
-      .map((result) => result.item)
-      .sort((a, b) => a.title.localeCompare(b.title));
+    return sortBooks(booksFuse.search(query).map((result) => result.item));
   });
 
   let showResultModal = $state(false);
@@ -365,6 +451,36 @@
 
     <div class="mb-4 flex items-center justify-between">
       <Heading tag="h5">Collections</Heading>
+      <div class="flex items-center gap-1">
+        <Button color="alternative" size="sm" class="collection-sort-btn">
+          <ArrowSortLettersOutline class="me-1.5 h-3.5 w-3.5" />
+          {getCollectionSortLabel()}
+          <ChevronDownOutline class="ms-1.5 h-3 w-3" />
+        </Button>
+        <Dropdown class="list-none" triggeredBy=".collection-sort-btn" placement="bottom-end">
+          {#each collectionSortOptions as option (option.value)}
+            <DropdownItem
+              onclick={() => (collectionSortField = option.value)}
+              class={collectionSortField === option.value ? "bg-gray-100 dark:bg-gray-600" : ""}
+            >
+              {option.label}
+            </DropdownItem>
+          {/each}
+        </Dropdown>
+        <Button
+          color="alternative"
+          size="sm"
+          class="px-2!"
+          onclick={toggleCollectionSortDirection}
+          aria-label="Toggle sort direction"
+        >
+          {#if collectionSortDirection === "asc"}
+            <ArrowUpOutline class="h-4 w-4" />
+          {:else}
+            <ArrowDownOutline class="h-4 w-4" />
+          {/if}
+        </Button>
+      </div>
     </div>
 
     <div
@@ -404,6 +520,36 @@
 
     <div class="mb-4 flex items-center justify-between">
       <Heading tag="h5">All volumes</Heading>
+      <div class="flex items-center gap-1">
+        <Button color="alternative" size="sm" class="book-sort-btn">
+          <ArrowSortLettersOutline class="me-1.5 h-3.5 w-3.5" />
+          {getBookSortLabel()}
+          <ChevronDownOutline class="ms-1.5 h-3 w-3" />
+        </Button>
+        <Dropdown class="list-none" triggeredBy=".book-sort-btn" placement="bottom-end">
+          {#each bookSortOptions as option (option.value)}
+            <DropdownItem
+              onclick={() => (bookSortField = option.value)}
+              class={bookSortField === option.value ? "bg-gray-100 dark:bg-gray-600" : ""}
+            >
+              {option.label}
+            </DropdownItem>
+          {/each}
+        </Dropdown>
+        <Button
+          color="alternative"
+          size="sm"
+          class="px-2!"
+          onclick={toggleBookSortDirection}
+          aria-label="Toggle sort direction"
+        >
+          {#if bookSortDirection === "asc"}
+            <ArrowUpOutline class="h-4 w-4" />
+          {:else}
+            <ArrowDownOutline class="h-4 w-4" />
+          {/if}
+        </Button>
+      </div>
     </div>
 
     <div

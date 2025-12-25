@@ -140,7 +140,7 @@
           </div>
 
           <div class="space-y-2">
-            <span class="setting-label">Theme</span>
+            <Heading class="setting-label" tag="h6">Theme</Heading>
             <RadioDropdown
               bind:value={themeMode}
               options={[
@@ -152,7 +152,7 @@
           </div>
 
           <div class="space-y-2">
-            <span class="setting-label">Default reading Direction</span>
+            <Heading class="setting-label" tag="h6">Default reading direction</Heading>
             <RadioDropdown
               bind:value={readingDirection}
               options={[
