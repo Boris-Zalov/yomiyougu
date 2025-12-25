@@ -19,7 +19,6 @@ diesel::table! {
         reading_direction -> Nullable<Text>,
         page_display_mode -> Nullable<Text>,
         image_fit_mode -> Nullable<Text>,
-        reader_background -> Nullable<Text>,
         sync_progress -> Nullable<Bool>,
         updated_at -> Timestamp,
         uuid -> Nullable<Text>,

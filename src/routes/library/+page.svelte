@@ -13,15 +13,23 @@
     Textarea,
     Helper,
     Tooltip,
+    P,
+    Dropdown,
+    DropdownItem,
   } from "flowbite-svelte";
   import {
     PlusOutline,
     CheckCircleSolid,
     CloseCircleSolid,
     RefreshOutline,
+    TrashBinOutline,
+    ChevronDownOutline,
+    ArrowUpOutline,
+    ArrowDownOutline,
+    ArrowSortLettersOutline,
   } from "flowbite-svelte-icons";
   import { LibrarySkeleton } from "$skeletons";
-  import { BookItem } from "$components/library";
+  import { BookItem, CollectionItem } from "$components/library";
   import { open } from "@tauri-apps/plugin-dialog";
   import {
     libraryApi,
@@ -42,6 +50,92 @@
   let search = $state("");
   let books = $state<BookWithDetails[]>([]);
   let collections = $state<CollectionWithCount[]>([]);
+
+  // Sorting state
+  type SortField = "name" | "date_added" | "book_count";
+  type BookSortField = "title" | "date_added" | "last_read" | "progress";
+  type SortDirection = "asc" | "desc";
+
+  let collectionSortField = $state<SortField>("name");
+  let collectionSortDirection = $state<SortDirection>("asc");
+  let bookSortField = $state<BookSortField>("title");
+  let bookSortDirection = $state<SortDirection>("asc");
+
+  const collectionSortOptions: { value: SortField; label: string }[] = [
+    { value: "name", label: "Name" },
+    { value: "date_added", label: "Date Added" },
+    { value: "book_count", label: "Book Count" },
+  ];
+
+  const bookSortOptions: { value: BookSortField; label: string }[] = [
+    { value: "title", label: "Title" },
+    { value: "date_added", label: "Date Added" },
+    { value: "last_read", label: "Last Read" },
+    { value: "progress", label: "Progress" },
+  ];
+
+  function getCollectionSortLabel(): string {
+    return collectionSortOptions.find((o) => o.value === collectionSortField)?.label ?? "Sort";
+  }
+
+  function getBookSortLabel(): string {
+    return bookSortOptions.find((o) => o.value === bookSortField)?.label ?? "Sort";
+  }
+
+  function toggleCollectionSortDirection() {
+    collectionSortDirection = collectionSortDirection === "asc" ? "desc" : "asc";
+  }
+
+  function toggleBookSortDirection() {
+    bookSortDirection = bookSortDirection === "asc" ? "desc" : "asc";
+  }
+
+  function sortCollections(items: CollectionWithCount[]): CollectionWithCount[] {
+    const sorted = [...items];
+    const dir = collectionSortDirection === "asc" ? 1 : -1;
+    
+    switch (collectionSortField) {
+      case "name":
+        sorted.sort((a, b) => dir * a.name.localeCompare(b.name));
+        break;
+      case "date_added":
+        sorted.sort((a, b) => dir * (new Date(a.created_at).getTime() - new Date(b.created_at).getTime()));
+        break;
+      case "book_count":
+        sorted.sort((a, b) => dir * (a.book_count - b.book_count));
+        break;
+    }
+    return sorted;
+  }
+
+  function sortBooks(items: BookWithDetails[]): BookWithDetails[] {
+    const sorted = [...items];
+    const dir = bookSortDirection === "asc" ? 1 : -1;
+    
+    switch (bookSortField) {
+      case "title":
+        sorted.sort((a, b) => dir * a.title.localeCompare(b.title));
+        break;
+      case "date_added":
+        sorted.sort((a, b) => dir * (new Date(a.added_at).getTime() - new Date(b.added_at).getTime()));
+        break;
+      case "last_read":
+        sorted.sort((a, b) => {
+          const aTime = a.last_read_at ? new Date(a.last_read_at).getTime() : 0;
+          const bTime = b.last_read_at ? new Date(b.last_read_at).getTime() : 0;
+          return dir * (aTime - bTime);
+        });
+        break;
+      case "progress":
+        sorted.sort((a, b) => {
+          const aProgress = a.total_pages > 0 ? a.current_page / a.total_pages : 0;
+          const bProgress = b.total_pages > 0 ? b.current_page / b.total_pages : 0;
+          return dir * (aProgress - bProgress);
+        });
+        break;
+    }
+    return sorted;
+  }
 
   // Strip punctuation for search normalization
   function stripPunctuation(str: string): string {
@@ -79,23 +173,17 @@
   let filteredCollections = $derived.by(() => {
     const query = stripPunctuation(search.trim());
     if (!query) {
-      return [...collections].sort((a, b) => a.name.localeCompare(b.name));
+      return sortCollections(collections);
     }
-    return collectionsFuse
-      .search(query)
-      .map((result) => result.item)
-      .sort((a, b) => a.name.localeCompare(b.name));
+    return sortCollections(collectionsFuse.search(query).map((result) => result.item));
   });
 
   let filteredBooks = $derived.by(() => {
     const query = stripPunctuation(search.trim());
     if (!query) {
-      return [...books].sort((a, b) => a.title.localeCompare(b.title));
+      return sortBooks(books);
     }
-    return booksFuse
-      .search(query)
-      .map((result) => result.item)
-      .sort((a, b) => a.title.localeCompare(b.title));
+    return sortBooks(booksFuse.search(query).map((result) => result.item));
   });
 
   let showResultModal = $state(false);
@@ -108,6 +196,13 @@
   let newCollectionName = $state("");
   let newCollectionDescription = $state("");
   let collectionNameError = $state("");
+
+  // Delete confirmation state
+  let showDeleteBookModal = $state(false);
+  let showDeleteCollectionModal = $state(false);
+  let bookToDelete = $state<BookWithDetails | null>(null);
+  let collectionToDelete = $state<CollectionWithCount | null>(null);
+  let isDeleting = $state(false);
 
   function parseError(error: unknown): string {
     const errorStr = String(error);
@@ -219,6 +314,68 @@
     }
   }
 
+  // Toggle favorite for a book
+  async function handleToggleFavorite(book: BookWithDetails) {
+    try {
+      const updatedBook = await libraryApi.toggleFavorite(book);
+      // Update the book in the local state
+      books = books.map((b) =>
+        b.id === updatedBook.id ? { ...b, is_favorite: updatedBook.is_favorite } : b
+      );
+    } catch (error) {
+      console.error("Failed to toggle favorite:", error);
+      showError(parseError(error));
+    }
+  }
+
+  // Show delete book confirmation
+  function confirmDeleteBook(book: BookWithDetails) {
+    bookToDelete = book;
+    showDeleteBookModal = true;
+  }
+
+  // Delete a book
+  async function handleDeleteBook() {
+    if (!bookToDelete) return;
+    
+    isDeleting = true;
+    try {
+      await libraryApi.deleteBook(bookToDelete.id);
+      books = books.filter((b) => b.id !== bookToDelete!.id);
+      showDeleteBookModal = false;
+      bookToDelete = null;
+    } catch (error) {
+      console.error("Failed to delete book:", error);
+      showError(parseError(error));
+    } finally {
+      isDeleting = false;
+    }
+  }
+
+  // Show delete collection confirmation
+  function confirmDeleteCollection(collection: CollectionWithCount) {
+    collectionToDelete = collection;
+    showDeleteCollectionModal = true;
+  }
+
+  // Delete a collection
+  async function handleDeleteCollection() {
+    if (!collectionToDelete) return;
+    
+    isDeleting = true;
+    try {
+      await libraryApi.deleteCollection(collectionToDelete.id);
+      collections = collections.filter((c) => c.id !== collectionToDelete!.id);
+      showDeleteCollectionModal = false;
+      collectionToDelete = null;
+    } catch (error) {
+      console.error("Failed to delete collection:", error);
+      showError(parseError(error));
+    } finally {
+      isDeleting = false;
+    }
+  }
+
   async function handleSync() {
     isSyncing = true;
     syncStatusText = "Syncing...";
@@ -294,6 +451,36 @@
 
     <div class="mb-4 flex items-center justify-between">
       <Heading tag="h5">Collections</Heading>
+      <div class="flex items-center gap-1">
+        <Button color="alternative" size="sm" class="collection-sort-btn">
+          <ArrowSortLettersOutline class="me-1.5 h-3.5 w-3.5" />
+          {getCollectionSortLabel()}
+          <ChevronDownOutline class="ms-1.5 h-3 w-3" />
+        </Button>
+        <Dropdown class="list-none" triggeredBy=".collection-sort-btn" placement="bottom-end">
+          {#each collectionSortOptions as option (option.value)}
+            <DropdownItem
+              onclick={() => (collectionSortField = option.value)}
+              class={collectionSortField === option.value ? "bg-gray-100 dark:bg-gray-600" : ""}
+            >
+              {option.label}
+            </DropdownItem>
+          {/each}
+        </Dropdown>
+        <Button
+          color="alternative"
+          size="sm"
+          class="px-2!"
+          onclick={toggleCollectionSortDirection}
+          aria-label="Toggle sort direction"
+        >
+          {#if collectionSortDirection === "asc"}
+            <ArrowUpOutline class="h-4 w-4" />
+          {:else}
+            <ArrowDownOutline class="h-4 w-4" />
+          {/if}
+        </Button>
+      </div>
     </div>
 
     <div
@@ -314,24 +501,10 @@
       {/if}
 
       {#each filteredCollections as collection (collection.id)}
-        <a href={`/library/collections/${collection.id}`}>
-          <div class="relative group">
-            <div
-              class="w-full aspect-2/3 rounded-lg bg-linear-to-br from-primary-500 to-primary-700 dark:from-primary-600 dark:to-primary-800 flex items-center justify-center cursor-pointer hover:opacity-90 transition-opacity"
-            >
-              <span
-                class="text-white text-center px-2 font-medium text-sm line-clamp-3"
-                >{collection.name}</span
-              >
-            </div>
-            <div
-              class="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-xs text-center py-1 rounded-b-lg"
-            >
-              {collection.book_count}
-              {collection.book_count === 1 ? "book" : "books"}
-            </div>
-          </div>
-          </a>
+        <CollectionItem 
+          {collection} 
+          ondelete={confirmDeleteCollection}
+        />
       {:else}
         {#if search.trim()}
           <p
@@ -347,6 +520,36 @@
 
     <div class="mb-4 flex items-center justify-between">
       <Heading tag="h5">All volumes</Heading>
+      <div class="flex items-center gap-1">
+        <Button color="alternative" size="sm" class="book-sort-btn">
+          <ArrowSortLettersOutline class="me-1.5 h-3.5 w-3.5" />
+          {getBookSortLabel()}
+          <ChevronDownOutline class="ms-1.5 h-3 w-3" />
+        </Button>
+        <Dropdown class="list-none" triggeredBy=".book-sort-btn" placement="bottom-end">
+          {#each bookSortOptions as option (option.value)}
+            <DropdownItem
+              onclick={() => (bookSortField = option.value)}
+              class={bookSortField === option.value ? "bg-gray-100 dark:bg-gray-600" : ""}
+            >
+              {option.label}
+            </DropdownItem>
+          {/each}
+        </Dropdown>
+        <Button
+          color="alternative"
+          size="sm"
+          class="px-2!"
+          onclick={toggleBookSortDirection}
+          aria-label="Toggle sort direction"
+        >
+          {#if bookSortDirection === "asc"}
+            <ArrowUpOutline class="h-4 w-4" />
+          {:else}
+            <ArrowDownOutline class="h-4 w-4" />
+          {/if}
+        </Button>
+      </div>
     </div>
 
     <div
@@ -373,7 +576,11 @@
       {/if}
 
       {#each filteredBooks as book (book.id)}
-        <BookItem {book} />
+        <BookItem 
+          {book} 
+          ontogglefavorite={handleToggleFavorite}
+          ondelete={confirmDeleteBook}
+        />
       {:else}
         {#if search.trim()}
           <p
@@ -408,9 +615,9 @@
       }}
       class="space-y-4"
     >
-      <h3 class="text-lg font-medium text-gray-900 dark:text-white">
+      <Heading tag="h3" class="text-lg font-medium">
         Create New Collection
-      </h3>
+      </Heading>
 
       <div>
         <Label for="collection-name" class="mb-2">Name</Label>
@@ -468,18 +675,18 @@
   </Modal>
 
   <!-- Import Success Modal -->
-  <Modal bind:open={showResultModal} size="xs" autoclose>
+  <Modal bind:open={showResultModal} size="md" autoclose>
     <div class="text-center">
       <CheckCircleSolid
         class="mx-auto mb-4 w-12 h-12 text-green-500 dark:text-green-400"
       />
-      <h3 class="mb-5 text-lg font-normal text-gray-900 dark:text-white">
+      <Heading tag="h3" class="mb-5 text-lg font-normal">
         Import Complete
-      </h3>
+      </Heading>
       <div class="mb-6 text-sm text-gray-600 dark:text-gray-300">
         {#if importedBook}
-          <p>Successfully added "<strong>{importedBook.title}</strong>"</p>
-          <p class="mt-2 text-gray-500">{importedBook.total_pages} pages</p>
+          <P>Successfully added "<strong>{importedBook.title}</strong>"</P>
+          <P class="mt-2 text-gray-500">{importedBook.total_pages} pages</P>
         {/if}
       </div>
       <Button color="red" class="w-full">Close</Button>
@@ -487,18 +694,94 @@
   </Modal>
 
   <!-- Error Modal -->
-  <Modal bind:open={showErrorModal} size="xs" autoclose>
+  <Modal bind:open={showErrorModal} size="md" autoclose>
     <div class="text-center">
       <CloseCircleSolid
         class="mx-auto mb-4 w-12 h-12 text-red-500 dark:text-red-400"
       />
-      <h3 class="mb-5 text-lg font-normal text-gray-900 dark:text-white">
+      <Heading tag="h3" class="mb-5 text-lg font-normal">
         Error
-      </h3>
-      <div class="mb-6 text-sm text-gray-600 dark:text-gray-300">
-        <p>{errorMessage}</p>
-      </div>
+      </Heading>
+      <P size="sm" class="mb-6 text-gray-600 dark:text-gray-300">
+        {errorMessage}
+      </P>
       <Button color="red" class="w-full">Close</Button>
+    </div>
+  </Modal>
+
+  <!-- Delete Book Confirmation Modal -->
+  <Modal bind:open={showDeleteBookModal} size="md">
+    <div class="text-center">
+      <TrashBinOutline
+        class="mx-auto mb-4 w-12 h-12 text-red-500 dark:text-red-400"
+      />
+      <Heading tag="h3" class="mb-2 text-lg font-medium">
+        Delete Book
+      </Heading>
+      <P size="sm" class="mb-5 text-gray-500 dark:text-gray-400">
+        Are you sure you want to delete "<strong>{bookToDelete?.title}</strong>"? This action cannot be undone.
+      </P>
+      <div class="flex gap-3">
+        <Button
+          color="alternative"
+          class="flex-1"
+          onclick={() => { showDeleteBookModal = false; bookToDelete = null; }}
+          disabled={isDeleting}
+        >
+          Cancel
+        </Button>
+        <Button
+          color="red"
+          class="flex-1"
+          onclick={handleDeleteBook}
+          disabled={isDeleting}
+        >
+          {#if isDeleting}
+            <Spinner size="4" class="mr-2" />
+            Deleting...
+          {:else}
+            Delete
+          {/if}
+        </Button>
+      </div>
+    </div>
+  </Modal>
+
+  <!-- Delete Collection Confirmation Modal -->
+  <Modal bind:open={showDeleteCollectionModal} size="md">
+    <div class="text-center">
+      <TrashBinOutline
+        class="mx-auto mb-4 w-12 h-12 text-red-500 dark:text-red-400"
+      />
+      <Heading tag="h3" class="mb-2 text-lg font-medium">
+        Delete Collection
+      </Heading>
+      <P size="sm" class="mb-5 text-gray-500 dark:text-gray-400">
+        Are you sure you want to delete the collection "<strong>{collectionToDelete?.name}</strong>"? Books in this collection will not be deleted.
+      </P>
+      <div class="flex gap-3">
+        <Button
+          color="alternative"
+          class="flex-1"
+          onclick={() => { showDeleteCollectionModal = false; collectionToDelete = null; }}
+          disabled={isDeleting}
+        >
+          Cancel
+        </Button>
+        <Button
+          color="red"
+          class="flex-1"
+          onclick={handleDeleteCollection}
+          disabled={isDeleting}
+        >
+          {#if isDeleting}
+            <Spinner size="4" class="mr-2" />
+            Deleting...
+          {:else}
+            Delete
+          {/if}
+        </Button>
+      </div>
     </div>
   </Modal>
 {/if}

@@ -13,7 +13,7 @@ use zip::ZipArchive;
 use crate::database::connection::establish_connection;
 use crate::database::models::*;
 use crate::error::{AppError, ErrorCode};
-use crate::schema::{book_collections, books, collections};
+use crate::schema::{book_collections, book_settings, books, collections};
 
 // ============================================================================
 // COLLECTIONS
@@ -131,14 +131,33 @@ pub fn update_collection(
 }
 
 /// Delete a collection (soft delete - sets deleted_at)
+/// Also modifies the name to avoid UNIQUE constraint conflicts with new collections
 pub fn delete_collection(collection_id: i32) -> Result<(), AppError> {
     info!("Soft-deleting collection ID: {}", collection_id);
     let mut conn = establish_connection()?;
 
     let now = chrono::Utc::now().naive_utc();
+    let timestamp = now.and_utc().timestamp();
+    
+    // Get current name to modify it
+    let collection: Collection = collections::table
+        .find(collection_id)
+        .select(Collection::as_select())
+        .first(&mut conn)
+        .map_err(|e| {
+            error!("Failed to find collection {}: {}", collection_id, e);
+            AppError::new(
+                ErrorCode::DatabaseQueryFailed,
+                format!("Failed to find collection: {}", e),
+            )
+        })?;
+    
+    // Append deletion timestamp to name to free up the name for reuse
+    let deleted_name = format!("{}__deleted_{}", collection.name, timestamp);
     
     diesel::update(collections::table.find(collection_id))
         .set((
+            collections::name.eq(deleted_name),
             collections::deleted_at.eq(Some(now)),
             collections::updated_at.eq(now),
         ))
@@ -948,4 +967,110 @@ pub fn set_book_collections(book_id: i32, collection_ids: Vec<i32>) -> Result<()
 
     info!("Book {} collections updated successfully", book_id);
     Ok(())
+}
+
+// ============================================================================
+// BOOK SETTINGS
+// ============================================================================
+
+/// Get book settings by book ID
+pub fn get_book_settings(book_id: i32) -> Result<Option<BookSettings>, AppError> {
+    debug!("Fetching settings for book {}", book_id);
+    let mut conn = establish_connection()?;
+
+    book_settings::table
+        .filter(book_settings::book_id.eq(book_id))
+        .filter(book_settings::deleted_at.is_null())
+        .select(BookSettings::as_select())
+        .first(&mut conn)
+        .optional()
+        .map_err(|e| {
+            AppError::new(
+                ErrorCode::DatabaseQueryFailed,
+                format!("Failed to load book settings: {}", e),
+            )
+        })
+}
+
+/// Update book settings (creates if not exists)
+pub fn update_book_settings(
+    book_id: i32,
+    reading_direction: Option<Option<String>>,
+    page_display_mode: Option<Option<String>>,
+    image_fit_mode: Option<Option<String>>,
+    sync_progress: Option<Option<bool>>,
+) -> Result<BookSettings, AppError> {
+    info!("Updating settings for book {}", book_id);
+    let mut conn = establish_connection()?;
+
+    // Check if settings exist
+    let existing: Option<BookSettings> = book_settings::table
+        .filter(book_settings::book_id.eq(book_id))
+        .filter(book_settings::deleted_at.is_null())
+        .select(BookSettings::as_select())
+        .first(&mut conn)
+        .optional()
+        .map_err(|e| {
+            AppError::new(
+                ErrorCode::DatabaseQueryFailed,
+                format!("Failed to check book settings: {}", e),
+            )
+        })?;
+
+    let now = chrono::Utc::now().naive_utc();
+
+    if let Some(_settings) = existing {
+        // Update existing settings
+        let updates = UpdateBookSettings {
+            reading_direction,
+            page_display_mode,
+            image_fit_mode,
+            sync_progress,
+            updated_at: Some(now),
+        };
+
+        diesel::update(book_settings::table.filter(book_settings::book_id.eq(book_id)))
+            .set(&updates)
+            .execute(&mut conn)
+            .map_err(|e| {
+                error!("Failed to update book settings for {}: {}", book_id, e);
+                AppError::new(
+                    ErrorCode::DatabaseQueryFailed,
+                    format!("Failed to update book settings: {}", e),
+                )
+            })?;
+    } else {
+        // Create new settings
+        let new_settings = NewBookSettings {
+            book_id,
+            reading_direction: reading_direction.flatten(),
+            page_display_mode: page_display_mode.flatten(),
+            image_fit_mode: image_fit_mode.flatten(),
+            sync_progress: sync_progress.flatten(),
+            uuid: Some(uuid::Uuid::new_v4().to_string()),
+        };
+
+        diesel::insert_into(book_settings::table)
+            .values(&new_settings)
+            .execute(&mut conn)
+            .map_err(|e| {
+                error!("Failed to create book settings for {}: {}", book_id, e);
+                AppError::new(
+                    ErrorCode::DatabaseQueryFailed,
+                    format!("Failed to create book settings: {}", e),
+                )
+            })?;
+    }
+
+    // Return the updated settings
+    book_settings::table
+        .filter(book_settings::book_id.eq(book_id))
+        .select(BookSettings::as_select())
+        .first(&mut conn)
+        .map_err(|e| {
+            AppError::new(
+                ErrorCode::DatabaseQueryFailed,
+                format!("Failed to retrieve book settings: {}", e),
+            )
+        })
 }

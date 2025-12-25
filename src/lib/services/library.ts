@@ -7,6 +7,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   Book,
   BookWithDetails,
+  BookSettings,
   Collection,
   CollectionWithCount,
   ReadingStatus,
@@ -243,4 +244,36 @@ export async function markAsCompleted(book: Book): Promise<Book> {
  */
 export async function startReading(bookId: number): Promise<Book> {
   return updateBook(bookId, { readingStatus: "reading" });
+}
+
+// ============================================================================
+// BOOK SETTINGS COMMANDS
+// ============================================================================
+
+/**
+ * Get book-specific settings
+ */
+export async function getBookSettings(bookId: number): Promise<BookSettings | null> {
+  return invoke<BookSettings | null>("get_book_settings", { bookId });
+}
+
+/**
+ * Update book-specific settings (creates if not exists)
+ */
+export async function updateBookSettings(
+  bookId: number,
+  settings: {
+    readingDirection?: string | null;
+    pageDisplayMode?: string | null;
+    imageFitMode?: string | null;
+    syncProgress?: boolean | null;
+  }
+): Promise<BookSettings> {
+  return invoke<BookSettings>("update_book_settings", {
+    bookId,
+    readingDirection: settings.readingDirection !== undefined ? settings.readingDirection : null,
+    pageDisplayMode: settings.pageDisplayMode !== undefined ? settings.pageDisplayMode : null,
+    imageFitMode: settings.imageFitMode !== undefined ? settings.imageFitMode : null,
+    syncProgress: settings.syncProgress !== undefined ? settings.syncProgress : null,
+  });
 }

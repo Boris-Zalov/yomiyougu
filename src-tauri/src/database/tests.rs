@@ -677,7 +677,6 @@ mod database_tests {
                 reading_direction: Some("rtl".to_string()),
                 page_display_mode: Some("double".to_string()),
                 image_fit_mode: None,
-                reader_background: Some("black".to_string()),
                 sync_progress: Some(true),
             };
 
@@ -707,7 +706,6 @@ mod database_tests {
                 reading_direction: Some("ltr".to_string()),
                 page_display_mode: None,
                 image_fit_mode: None,
-                reader_background: None,
                 sync_progress: None,
             };
 
@@ -722,7 +720,6 @@ mod database_tests {
                 reading_direction: Some("rtl".to_string()),
                 page_display_mode: None,
                 image_fit_mode: None,
-                reader_background: None,
                 sync_progress: None,
             };
 
@@ -747,7 +744,6 @@ mod database_tests {
                     reading_direction: Some("rtl".to_string()),
                     page_display_mode: None,
                     image_fit_mode: None,
-                    reader_background: None,
                     sync_progress: None,
                 })
                 .execute(&mut conn)
@@ -791,7 +787,6 @@ mod database_tests {
                     reading_direction: Some("ltr".to_string()),
                     page_display_mode: None,
                     image_fit_mode: None,
-                    reader_background: None,
                     sync_progress: None,
                 })
                 .returning(BookSettings::as_returning())

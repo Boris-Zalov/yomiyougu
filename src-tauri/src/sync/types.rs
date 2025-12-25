@@ -67,7 +67,6 @@ pub struct RemoteBookSettingsState {
     pub reading_direction: Option<String>,
     pub page_display_mode: Option<String>,
     pub image_fit_mode: Option<String>,
-    pub reader_background: Option<String>,
     pub sync_progress: Option<bool>,
     pub updated_at: i64,
     pub deleted_at: Option<i64>,

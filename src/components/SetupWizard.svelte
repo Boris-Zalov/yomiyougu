@@ -140,7 +140,7 @@
           </div>
 
           <div class="space-y-2">
-            <span class="setting-label">Theme</span>
+            <Heading class="setting-label" tag="h6">Theme</Heading>
             <RadioDropdown
               bind:value={themeMode}
               options={[
@@ -152,7 +152,7 @@
           </div>
 
           <div class="space-y-2">
-            <span class="setting-label">Default reading Direction</span>
+            <Heading class="setting-label" tag="h6">Default reading direction</Heading>
             <RadioDropdown
               bind:value={readingDirection}
               options={[
@@ -205,7 +205,7 @@
   </div>
 
   <!-- Error modal -->
-  <Modal bind:open={showError} size="xs" autoclose>
+  <Modal bind:open={showError} size="md" autoclose>
     <div class="text-center">
       <Heading tag="h3" class="mb-4 text-lg">{errorMessage}</Heading>
       <Button color="red" onclick={() => (showError = false)}>Close</Button>
