@@ -61,6 +61,13 @@ export default defineConfig({
 
   // Optimize dependencies
   optimizeDeps: {
-    include: ['fuse.js', 'flowbite-svelte'],
+    include: [
+      'fuse.js', 
+      'flowbite-svelte',
+      'flowbite-svelte-icons',
+      '@tauri-apps/api/core',
+      '@tauri-apps/plugin-dialog',
+      '@tauri-apps/plugin-os',
+    ],
   },
 });

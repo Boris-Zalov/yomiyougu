@@ -382,6 +382,52 @@ pub fn find_book_by_hash(file_hash: &str) -> Result<Option<Book>, AppError> {
         })
 }
 
+/// Find a soft-deleted book by hash (for restoration)
+pub fn find_deleted_book_by_hash(file_hash: &str) -> Result<Option<Book>, AppError> {
+    let mut conn = establish_connection()?;
+
+    books::table
+        .filter(books::file_hash.eq(file_hash))
+        .filter(books::deleted_at.is_not_null())
+        .select(Book::as_select())
+        .first(&mut conn)
+        .optional()
+        .map_err(|e| {
+            AppError::new(
+                ErrorCode::DatabaseQueryFailed,
+                format!("Failed to find deleted book: {}", e),
+            )
+        })
+}
+
+/// Restore a soft-deleted book with a new file path
+pub fn restore_deleted_book(book_id: i32, new_file_path: &str) -> Result<Book, AppError> {
+    info!("Restoring soft-deleted book ID: {} with path: {}", book_id, new_file_path);
+    let mut conn = establish_connection()?;
+
+    let now = chrono::Utc::now().naive_utc();
+
+    diesel::update(books::table.find(book_id))
+        .set((
+            books::deleted_at.eq(None::<chrono::NaiveDateTime>),
+            books::file_path.eq(new_file_path),
+            books::updated_at.eq(now),
+        ))
+        .returning(Book::as_returning())
+        .get_result(&mut conn)
+        .map(|book| {
+            info!("Book {} restored successfully", book_id);
+            book
+        })
+        .map_err(|e| {
+            error!("Failed to restore book {}: {}", book_id, e);
+            AppError::new(
+                ErrorCode::DatabaseQueryFailed,
+                format!("Failed to restore book: {}", e),
+            )
+        })
+}
+
 // ============================================================================
 // FILE PROCESSING HELPERS
 // ============================================================================
@@ -755,7 +801,7 @@ pub fn import_book_from_archive(
     // Calculate hash for duplicate detection
     let book_hash = calculate_archive_hash(archive_path)?;
 
-    // Check for duplicates before backing up
+    // Check for active duplicates before backing up
     if let Some(existing_book) = find_book_by_hash(&book_hash)? {
         warn!(
             "Duplicate book detected: {} (hash: {}...)",
@@ -767,6 +813,9 @@ pub fn import_book_from_archive(
             format!("Duplicate of existing book '{}'", existing_book.title),
         ));
     }
+
+    // Check if this book was previously deleted - if so, we'll restore it
+    let deleted_book = find_deleted_book_by_hash(&book_hash)?;
 
     // Backup the file if enabled
     let effective_path = if backup_files {
@@ -833,18 +882,25 @@ pub fn import_book_from_archive(
     // Extract title from filename
     let title = extract_title(&effective_filename);
 
-    // Create the book entry
-    let new_book = NewBook {
-        file_path: effective_path.to_string_lossy().to_string(),
-        filename: effective_filename,
-        file_size,
-        file_hash: Some(book_hash),
-        title: title.clone(),
-        total_pages,
-        uuid: Some(uuid::Uuid::new_v4().to_string()),
-    };
+    // Either restore deleted book or create new one
+    let book = if let Some(deleted) = deleted_book {
+        info!("Restoring previously deleted book: {} (ID: {})", deleted.title, deleted.id);
+        restore_deleted_book(deleted.id, &effective_path.to_string_lossy())?
+    } else {
+        // Create the book entry
+        let new_book = NewBook {
+            file_path: effective_path.to_string_lossy().to_string(),
+            filename: effective_filename,
+            file_size,
+            file_hash: Some(book_hash),
+            title: title.clone(),
+            total_pages,
+            uuid: Some(uuid::Uuid::new_v4().to_string()),
+        };
 
-    let book = create_book(new_book)?;
+        create_book(new_book)?
+    };
+    
     info!("Imported book: {} (ID: {})", book.title, book.id);
 
     // Add to collection if specified
