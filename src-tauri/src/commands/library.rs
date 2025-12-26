@@ -133,10 +133,98 @@ pub async fn remove_book_from_collection(book_id: i32, collection_id: i32) -> Re
     operations::remove_book_from_collection(book_id, collection_id).map_err(|e| e.into())
 }
 
-/// Delete a book
+/// Delete a book - removes local files (if in appdata) and queues cloud file deletion
 #[tauri::command]
-pub async fn delete_book(book_id: i32) -> Result<(), String> {
-    operations::delete_book(book_id).map_err(|e| e.into())
+pub async fn delete_book(app: AppHandle, book_id: i32) -> Result<(), String> {
+    delete_book_impl(&app, book_id).await.map_err(|e| e.into())
+}
+
+async fn delete_book_impl(app: &AppHandle, book_id: i32) -> Result<(), AppError> {
+    use crate::auth;
+    use crate::sync::DriveSync;
+    
+    // Get the book first to access its file path and hash
+    let book = operations::get_book_by_id(book_id)?;
+    
+    // Get the app data directory to check if the file is stored within it
+    let app_data_dir = app.path()
+        .app_data_dir()
+        .ok();
+    
+    // Delete local file only if it's stored in app data (not external reference)
+    if !book.file_path.starts_with("cloud://") {
+        let path = std::path::Path::new(&book.file_path);
+        
+        // Only delete if the file is within app data directory
+        let should_delete = app_data_dir
+            .as_ref()
+            .map(|app_dir| path.starts_with(app_dir))
+            .unwrap_or(false);
+        
+        if should_delete && path.exists() {
+            if let Err(e) = std::fs::remove_file(path) {
+                log::warn!("Failed to delete local file {:?}: {}", path, e);
+                // Continue with deletion - don't fail if local file can't be removed
+            } else {
+                log::info!("Deleted local file: {:?}", path);
+            }
+        } else if !should_delete {
+            log::info!("Keeping external file (not in app data): {:?}", path);
+        }
+    }
+    
+    // Try to delete from cloud if user is authenticated and book has a hash
+    if let Some(ref file_hash) = book.file_hash {
+        if let Ok(auth_status) = auth::get_auth_status(app) {
+            if auth_status.is_authenticated {
+                // Try to get a valid access token
+                if let Ok(token) = auth::load_token(app) {
+                    let access_token = if token.is_expired() {
+                        // Try to refresh the token
+                        if let (Ok(client_id), Ok(client_secret)) = (
+                            std::env::var("VITE_GOOGLE_CLIENT_ID"),
+                            std::env::var("VITE_GOOGLE_CLIENT_SECRET"),
+                        ) {
+                            match crate::commands::auth::refresh_token_internal(&client_id, &client_secret, &token).await {
+                                Ok(new_token) => {
+                                    let _ = auth::save_token(app, &new_token);
+                                    Some(new_token.access_token)
+                                }
+                                Err(e) => {
+                                    log::warn!("Failed to refresh token for cloud deletion: {}", e);
+                                    None
+                                }
+                            }
+                        } else {
+                            None
+                        }
+                    } else {
+                        Some(token.access_token)
+                    };
+                    
+                    if let Some(access_token) = access_token {
+                        let drive = DriveSync::with_token(access_token);
+                        match drive.delete_book_file(file_hash).await {
+                            Ok(deleted) => {
+                                if deleted {
+                                    log::info!("Deleted cloud file for book {}", book_id);
+                                }
+                            }
+                            Err(e) => {
+                                log::warn!("Failed to delete cloud file for book {}: {}", book_id, e);
+                                // Continue - cloud deletion failure shouldn't prevent local deletion
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // Soft-delete the book from database
+    operations::delete_book(book_id)?;
+    
+    Ok(())
 }
 
 /// Import a single book from a zip/cbz/rar/cbr archive file

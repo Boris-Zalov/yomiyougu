@@ -1,13 +1,29 @@
 <script>
   import { onMount } from 'svelte';
   import { fade } from 'svelte/transition';
+  import { invoke } from '@tauri-apps/api/core';
 
   let { onComplete } = $props();
 
   const fullText = "読み用具"; 
   let visibleText = $state(""); 
   
-  onMount(() => {
+  /**
+   * Initialize device ID on first launch (or retrieve existing one)
+   */
+  async function initializeDeviceId() {
+    try {
+      const deviceId = await invoke('get_or_create_device_id');
+      console.log('Device ID initialized:', deviceId);
+    } catch (error) {
+      console.error('Failed to initialize device ID:', error);
+      // Non-fatal - continue with app load
+    }
+  }
+  
+  onMount(async () => {
+    const deviceIdPromise = initializeDeviceId();
+    
     let currentIndex = 0;
     const typingSpeed = 100; 
     const minDisplayTime = 1000; 
@@ -23,9 +39,12 @@
         const elapsedTime = Date.now() - startTime;
         const remainingTime = Math.max(0, minDisplayTime - elapsedTime);
 
-        setTimeout(() => {
+        Promise.all([
+          deviceIdPromise,
+          new Promise(resolve => setTimeout(resolve, remainingTime + 500))
+        ]).then(() => {
           onComplete();
-        }, remainingTime + 500);
+        });
       }
     }, typingSpeed);
   });
