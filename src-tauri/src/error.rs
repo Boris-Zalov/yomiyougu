@@ -83,10 +83,7 @@ impl AppError {
     }
 
     pub fn not_authenticated() -> Self {
-        Self::new(
-            ErrorCode::NotAuthenticated,
-            "Not authenticated with Google",
-        )
+        Self::new(ErrorCode::NotAuthenticated, "Not authenticated with Google")
     }
 }
 

@@ -439,7 +439,10 @@ mod database_tests {
 
             // Book should still exist
             let book_exists: bool = books::table.find(book.id).first::<Book>(&mut conn).is_ok();
-            assert!(book_exists, "Book should still exist after collection deletion");
+            assert!(
+                book_exists,
+                "Book should still exist after collection deletion"
+            );
 
             // Junction entry should be deleted (CASCADE)
             let remaining: i64 = book_collections::table

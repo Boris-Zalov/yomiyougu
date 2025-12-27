@@ -20,10 +20,8 @@ pub use error::AppError;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Initialize logger
-    env_logger::Builder::from_default_env()
-        .filter_level(log::LevelFilter::Info)
-        .init();
+    // Initialize logger - respect RUST_LOG env var, default to Info
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
     log::info!("Starting yomiyougu application");
 
@@ -35,6 +33,7 @@ pub fn run() {
         .setup(|app| {
             database::connection::init_pool(app.handle())?;
             log::info!("Database connection pool initialized");
+            log::info!("Stronghold secure storage available for credential management");
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

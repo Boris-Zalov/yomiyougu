@@ -43,7 +43,9 @@ pub struct UpdateCollection {
 // ============================================================================
 
 /// Junction table model for many-to-many book-collection relationship
-#[derive(Debug, Clone, Queryable, Identifiable, Selectable, Associations, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Queryable, Identifiable, Selectable, Associations, Serialize, Deserialize,
+)]
 #[diesel(table_name = book_collections)]
 #[diesel(belongs_to(Book))]
 #[diesel(belongs_to(Collection))]
@@ -102,9 +104,7 @@ impl ReadingStatus {
 }
 
 /// Book model for manga/comics
-#[derive(
-    Debug, Clone, Queryable, Identifiable, Selectable, Serialize, Deserialize,
-)]
+#[derive(Debug, Clone, Queryable, Identifiable, Selectable, Serialize, Deserialize)]
 #[diesel(table_name = books)]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
 pub struct Book {

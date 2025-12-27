@@ -242,7 +242,7 @@ pub async fn google_sign_in(
     scope: String,
 ) -> Result<AuthStatus, String> {
     const OAUTH_PORT: u16 = 8085;
-    
+
     let listener = TcpListener::bind(format!("127.0.0.1:{}", OAUTH_PORT))
         .await
         .map_err(|e| format!("Failed to start local server on port {}: {}. Make sure no other app is using this port.", OAUTH_PORT, e))?;
@@ -276,9 +276,11 @@ pub async fn google_sign_in(
         query_string
     );
 
-    // Open the browser
-    log::info!("Opening OAuth URL in browser, listening on port {}", OAUTH_PORT);
-    
+    log::info!(
+        "Opening OAuth URL in browser, listening on port {}",
+        OAUTH_PORT
+    );
+
     app.opener()
         .open_url(&auth_url, None::<&str>)
         .map_err(|e| format!("Failed to open browser: {}", e))?;
@@ -306,7 +308,10 @@ pub async fn google_sign_in(
 }
 
 /// Wait for OAuth callback and extract authorization code
-async fn wait_for_oauth_callback(listener: &TcpListener, expected_state: &str) -> Result<String, String> {
+async fn wait_for_oauth_callback(
+    listener: &TcpListener,
+    expected_state: &str,
+) -> Result<String, String> {
     loop {
         let (mut socket, _) = listener
             .accept()

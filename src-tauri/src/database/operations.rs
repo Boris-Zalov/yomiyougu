@@ -243,8 +243,12 @@ pub fn get_all_books(
                 .load(&mut conn)
                 .unwrap_or_default();
 
-            let collection_ids: Vec<i32> = book_collections_data.iter().map(|(id, _)| *id).collect();
-            let collection_names: Vec<String> = book_collections_data.into_iter().map(|(_, name)| name).collect();
+            let collection_ids: Vec<i32> =
+                book_collections_data.iter().map(|(id, _)| *id).collect();
+            let collection_names: Vec<String> = book_collections_data
+                .into_iter()
+                .map(|(_, name)| name)
+                .collect();
 
             BookWithDetails {
                 book,
@@ -351,13 +355,15 @@ enum ArchiveType {
 
 /// Detect archive type from magic bytes (file signature)
 fn detect_archive_type(path: &Path) -> Result<ArchiveType, AppError> {
-    let mut file = fs::File::open(path).map_err(|e| {
-        AppError::new(ErrorCode::IoError, format!("Failed to open file: {}", e))
-    })?;
+    let mut file = fs::File::open(path)
+        .map_err(|e| AppError::new(ErrorCode::IoError, format!("Failed to open file: {}", e)))?;
 
     let mut magic = [0u8; 8];
     file.read(&mut magic).map_err(|e| {
-        AppError::new(ErrorCode::IoError, format!("Failed to read file header: {}", e))
+        AppError::new(
+            ErrorCode::IoError,
+            format!("Failed to read file header: {}", e),
+        )
     })?;
 
     // ZIP: starts with "PK" (0x50 0x4B)
@@ -441,9 +447,8 @@ fn calculate_archive_hash(archive_path: &Path) -> Result<String, AppError> {
 
 /// Calculate hash for all images in a ZIP/CBZ archive
 fn calculate_zip_hash(archive_path: &Path) -> Result<String, AppError> {
-    let file = fs::File::open(archive_path).map_err(|e| {
-        AppError::new(ErrorCode::IoError, format!("Failed to open archive: {}", e))
-    })?;
+    let file = fs::File::open(archive_path)
+        .map_err(|e| AppError::new(ErrorCode::IoError, format!("Failed to open archive: {}", e)))?;
 
     let mut archive = ZipArchive::new(file).map_err(|e| {
         AppError::new(
@@ -465,7 +470,11 @@ fn calculate_zip_hash(archive_path: &Path) -> Result<String, AppError> {
         })?;
 
         let file_name = file.name().to_string();
-        if !file.is_dir() && is_image_file(&file_name) && !file_name.starts_with('.') && !file_name.contains("/.") {
+        if !file.is_dir()
+            && is_image_file(&file_name)
+            && !file_name.starts_with('.')
+            && !file_name.contains("/.")
+        {
             image_files.push(file_name);
         }
     }
@@ -573,9 +582,8 @@ fn calculate_rar_hash(archive_path: &Path) -> Result<String, AppError> {
 
 /// Count images in a ZIP/CBZ archive
 fn count_zip_images(archive_path: &Path) -> Result<i32, AppError> {
-    let file = fs::File::open(archive_path).map_err(|e| {
-        AppError::new(ErrorCode::IoError, format!("Failed to open archive: {}", e))
-    })?;
+    let file = fs::File::open(archive_path)
+        .map_err(|e| AppError::new(ErrorCode::IoError, format!("Failed to open archive: {}", e)))?;
 
     let mut archive = ZipArchive::new(file).map_err(|e| {
         AppError::new(
@@ -594,7 +602,11 @@ fn count_zip_images(archive_path: &Path) -> Result<i32, AppError> {
         })?;
 
         let file_name = file.name().to_string();
-        if !file.is_dir() && is_image_file(&file_name) && !file_name.starts_with('.') && !file_name.contains("/.") {
+        if !file.is_dir()
+            && is_image_file(&file_name)
+            && !file_name.starts_with('.')
+            && !file_name.contains("/.")
+        {
             count += 1;
         }
     }
@@ -806,7 +818,10 @@ pub fn import_book_from_archive(
 // ============================================================================
 
 /// Add a book to a collection
-pub fn add_book_to_collection(book_id: i32, collection_id: i32) -> Result<BookCollection, AppError> {
+pub fn add_book_to_collection(
+    book_id: i32,
+    collection_id: i32,
+) -> Result<BookCollection, AppError> {
     info!("Adding book {} to collection {}", book_id, collection_id);
     let mut conn = establish_connection()?;
 
@@ -820,11 +835,17 @@ pub fn add_book_to_collection(book_id: i32, collection_id: i32) -> Result<BookCo
         .returning(BookCollection::as_returning())
         .get_result(&mut conn)
         .map(|entry: BookCollection| {
-            info!("Book {} added to collection {} successfully", book_id, collection_id);
+            info!(
+                "Book {} added to collection {} successfully",
+                book_id, collection_id
+            );
             entry
         })
         .map_err(|e| {
-            error!("Failed to add book {} to collection {}: {}", book_id, collection_id, e);
+            error!(
+                "Failed to add book {} to collection {}: {}",
+                book_id, collection_id, e
+            );
             AppError::new(
                 ErrorCode::DatabaseQueryFailed,
                 format!("Failed to add book to collection: {}", e),
@@ -834,7 +855,10 @@ pub fn add_book_to_collection(book_id: i32, collection_id: i32) -> Result<BookCo
 
 /// Remove a book from a collection
 pub fn remove_book_from_collection(book_id: i32, collection_id: i32) -> Result<(), AppError> {
-    info!("Removing book {} from collection {}", book_id, collection_id);
+    info!(
+        "Removing book {} from collection {}",
+        book_id, collection_id
+    );
     let mut conn = establish_connection()?;
 
     diesel::delete(
@@ -844,14 +868,20 @@ pub fn remove_book_from_collection(book_id: i32, collection_id: i32) -> Result<(
     )
     .execute(&mut conn)
     .map_err(|e| {
-        error!("Failed to remove book {} from collection {}: {}", book_id, collection_id, e);
+        error!(
+            "Failed to remove book {} from collection {}: {}",
+            book_id, collection_id, e
+        );
         AppError::new(
             ErrorCode::DatabaseQueryFailed,
             format!("Failed to remove book from collection: {}", e),
         )
     })?;
 
-    info!("Book {} removed from collection {} successfully", book_id, collection_id);
+    info!(
+        "Book {} removed from collection {} successfully",
+        book_id, collection_id
+    );
     Ok(())
 }
 
@@ -874,7 +904,10 @@ pub fn get_book_collections(book_id: i32) -> Result<Vec<Collection>, AppError> {
 
 /// Set the collections for a book (replaces existing)
 pub fn set_book_collections(book_id: i32, collection_ids: Vec<i32>) -> Result<(), AppError> {
-    info!("Setting collections for book {}: {:?}", book_id, collection_ids);
+    info!(
+        "Setting collections for book {}: {:?}",
+        book_id, collection_ids
+    );
     let mut conn = establish_connection()?;
 
     // Remove all existing collection associations
