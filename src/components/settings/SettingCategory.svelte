@@ -3,6 +3,13 @@
 -->
 <script lang="ts">
   import { Card, Heading, Helper } from "flowbite-svelte";
+  import {
+    PaletteOutline,
+    BookOpenOutline,
+    BookOutline,
+    CloudArrowUpOutline,
+    CogOutline,
+  } from "flowbite-svelte-icons";
   import type { SettingCategory as CategoryType, SettingValue } from "$lib/types/settings";
   import SettingRow from "./SettingRow.svelte";
 
@@ -12,13 +19,31 @@
   }
 
   let { category, onchange }: Props = $props();
+
+  // Map icon names to components
+  const iconMap: Record<string, any> = {
+    "palette": PaletteOutline,
+    "book-open": BookOpenOutline,
+    "library": BookOutline,
+    "cloud": CloudArrowUpOutline,
+    "cog": CogOutline,
+  };
+
+  let IconComponent = $derived(
+    category.icon && iconMap[category.icon] ? iconMap[category.icon] : null
+  );
 </script>
 
 <Card class="p-0 overflow-hidden" size="xl">
   <div class="px-4 py-3">
-    <Heading tag="h1" class="text-base font-semibold">{category.label}</Heading>
+    <div class="flex items-center gap-2">
+      {#if IconComponent}
+        <IconComponent class="w-5 h-5 text-gray-500 dark:text-gray-400" />
+      {/if}
+      <Heading tag="h1" class="text-base font-semibold">{category.label}</Heading>
+    </div>
     {#if category.description}
-      <Helper>
+      <Helper class="mt-1">
         {category.description}
       </Helper>
     {/if}

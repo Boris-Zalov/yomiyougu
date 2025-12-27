@@ -90,7 +90,29 @@ fn create_sync_category() -> SettingCategory {
         "Backup and sync your data across devices",
     )
     .with_icon("cloud")
-    .add_settings(vec![])
+    .add_settings(vec![
+        SettingItem::new(
+            "sync.books",
+            "Sync Comic Books",
+            "Upload and sync your comic book files to Google Drive",
+            WidgetType::Toggle,
+            SettingValue::Bool(false),
+        ),
+        SettingItem::new(
+            "sync.settings",
+            "Sync Settings",
+            "Sync your app settings across devices",
+            WidgetType::Toggle,
+            SettingValue::Bool(false),
+        ),
+        SettingItem::new(
+            "sync.progress",
+            "Sync Reading Progress",
+            "Sync your reading progress and bookmarks across devices",
+            WidgetType::Toggle,
+            SettingValue::Bool(true),
+        ),
+    ])
 }
 
 fn create_advanced_category() -> SettingCategory {

@@ -1,12 +1,14 @@
 //! yomiyougu - A cross-platform manga/comic reader
 //!
 //! ## Module Structure
+//! - `auth/` - Google OAuth token management
 //! - `commands/` - Tauri commands exposed to frontend
 //! - `database/` - Diesel ORM models and connection management
 //! - `settings/` - Configuration management with UI schema generation
 //! - `error` - Application-wide error types
 //! - `schema` - Auto-generated Diesel schema
 
+mod auth;
 mod commands;
 mod database;
 mod error;
@@ -36,6 +38,15 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            // Auth commands
+            commands::get_auth_status,
+            commands::get_google_auth_url,
+            commands::exchange_google_code,
+            commands::refresh_google_token,
+            commands::google_logout,
+            commands::set_auth_token,
+            commands::save_google_auth_token,
+            // Settings commands
             commands::check_settings_exists,
             commands::get_settings,
             commands::get_settings_schema,

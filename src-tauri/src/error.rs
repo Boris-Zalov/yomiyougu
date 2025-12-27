@@ -25,6 +25,7 @@ pub enum ErrorCode {
     DatabaseQueryFailed,
     DatabasePathError,
     DuplicateEntry,
+    NotAuthenticated,
 }
 
 impl AppError {
@@ -78,6 +79,13 @@ impl AppError {
         Self::new(
             ErrorCode::InvalidSettingValue,
             format!("Invalid value for '{}': {}", key, reason),
+        )
+    }
+
+    pub fn not_authenticated() -> Self {
+        Self::new(
+            ErrorCode::NotAuthenticated,
+            "Not authenticated with Google",
         )
     }
 }
