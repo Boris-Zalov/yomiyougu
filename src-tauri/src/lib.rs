@@ -40,8 +40,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             // Auth commands
             commands::get_auth_status,
-            commands::get_google_auth_url,
-            commands::exchange_google_code,
+            commands::google_sign_in,
             commands::refresh_google_token,
             commands::google_logout,
             commands::set_auth_token,

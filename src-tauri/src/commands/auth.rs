@@ -9,6 +9,9 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
+use tauri_plugin_opener::OpenerExt;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::net::TcpListener;
 
 /// OAuth configuration returned to frontend
 #[derive(Debug, Clone, Serialize)]
@@ -17,6 +20,7 @@ pub struct OAuthConfig {
     pub auth_url: String,
     pub state: String,
     pub code_verifier: String,
+    pub port: u16,
 }
 
 /// Token response from Google OAuth
@@ -64,20 +68,187 @@ fn base64_url_encode(data: &[u8]) -> String {
     URL_SAFE_NO_PAD.encode(data)
 }
 
+/// HTML response shown after successful authentication
+const SUCCESS_HTML: &str = r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login Successful</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #f4f6f8;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            color: #333;
+        }
+
+        .container {
+            background-color: #ffffff;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            max-width: 400px;
+            width: 90%;
+        }
+
+        /* Success Icon */
+        .icon-circle {
+            width: 80px;
+            height: 80px;
+            background-color: #e6f4ea;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 20px auto;
+        }
+
+        .icon-circle svg {
+            width: 40px;
+            height: 40px;
+            fill: #34a853;
+        }
+
+        h1 {
+            margin: 0 0 10px 0;
+            font-size: 24px;
+            color: #202124;
+        }
+
+        p {
+            margin: 0 0 30px 0;
+            font-size: 16px;
+            color: #5f6368;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="icon-circle">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+            </svg>
+        </div>
+
+        <h1>Login Successful</h1>
+        <p>You have successfully signed in. You can now close this window and return to the app.</p>
+    </div>
+</body>
+</html>"#;
+
+const ERROR_HTML: &str = r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login Failed</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #f4f6f8;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            color: #333;
+        }
+
+        .container {
+            background-color: #ffffff;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            max-width: 400px;
+            width: 90%;
+        }
+
+        /* Error Icon Styles */
+        .icon-circle {
+            width: 80px;
+            height: 80px;
+            background-color: #fce8e6;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 20px auto;
+        }
+
+        .icon-circle svg {
+            width: 40px;
+            height: 40px;
+            fill: #d93025;
+        }
+
+        h1 {
+            margin: 0 0 10px 0;
+            font-size: 24px;
+            color: #202124;
+        }
+
+        p {
+            margin: 0 0 30px 0;
+            font-size: 16px;
+            color: #5f6368;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="icon-circle">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+            </svg>
+        </div>
+
+        <h1>Login Failed</h1>
+        <p>We were unable to sign you in. Please return to the app and try again.</p>
+    </div>
+</body>
+</html>"#;
+
 /// Get the current authentication status
 #[tauri::command]
 pub async fn get_auth_status(app: tauri::AppHandle) -> Result<AuthStatus, String> {
     auth::get_auth_status(&app).map_err(|e| String::from(e))
 }
 
-/// Generate OAuth URL for Google sign-in
-/// Returns the auth URL and state/verifier for PKCE verification
+/// Google OAuth sign-in flow with local HTTP server
+/// This command:
+/// 1. Starts a local HTTP server on a random port
+/// 2. Opens the browser with the OAuth URL
+/// 3. Waits for the callback with the authorization code
+/// 4. Exchanges the code for tokens
+/// 5. Returns the authentication status
 #[tauri::command]
-pub async fn get_google_auth_url(
+pub async fn google_sign_in(
+    app: tauri::AppHandle,
     client_id: String,
-    redirect_uri: String,
+    client_secret: String,
     scope: String,
-) -> Result<OAuthConfig, String> {
+) -> Result<AuthStatus, String> {
+    const OAUTH_PORT: u16 = 8085;
+    
+    let listener = TcpListener::bind(format!("127.0.0.1:{}", OAUTH_PORT))
+        .await
+        .map_err(|e| format!("Failed to start local server on port {}: {}. Make sure no other app is using this port.", OAUTH_PORT, e))?;
+
+    let redirect_uri = format!("http://127.0.0.1:{}", OAUTH_PORT);
+
     let state = generate_random_string(32);
     let code_verifier = generate_random_string(64);
     let code_challenge = generate_code_challenge(&code_verifier);
@@ -90,8 +261,8 @@ pub async fn get_google_auth_url(
         ("state", state.as_str()),
         ("code_challenge", code_challenge.as_str()),
         ("code_challenge_method", "S256"),
-        ("access_type", "offline"), // This is key for getting refresh tokens!
-        ("prompt", "consent"),      // Force consent to always get refresh token
+        ("access_type", "offline"),
+        ("prompt", "consent"),
     ];
 
     let query_string: String = params
@@ -105,17 +276,111 @@ pub async fn get_google_auth_url(
         query_string
     );
 
-    Ok(OAuthConfig {
-        auth_url,
-        state,
+    // Open the browser
+    log::info!("Opening OAuth URL in browser, listening on port {}", OAUTH_PORT);
+    
+    app.opener()
+        .open_url(&auth_url, None::<&str>)
+        .map_err(|e| format!("Failed to open browser: {}", e))?;
+
+    let result = tokio::time::timeout(
+        std::time::Duration::from_secs(300), // 5 minute timeout
+        wait_for_oauth_callback(&listener, &state),
+    )
+    .await
+    .map_err(|_| "OAuth timeout - please try again".to_string())?;
+
+    let code = result?;
+
+    let auth_status = exchange_code_for_tokens(
+        &app,
+        code,
         code_verifier,
-    })
+        client_id,
+        client_secret,
+        redirect_uri,
+    )
+    .await?;
+
+    Ok(auth_status)
+}
+
+/// Wait for OAuth callback and extract authorization code
+async fn wait_for_oauth_callback(listener: &TcpListener, expected_state: &str) -> Result<String, String> {
+    loop {
+        let (mut socket, _) = listener
+            .accept()
+            .await
+            .map_err(|e| format!("Failed to accept connection: {}", e))?;
+
+        let (reader, mut writer) = socket.split();
+        let mut buf_reader = BufReader::new(reader);
+        let mut request_line = String::new();
+
+        buf_reader
+            .read_line(&mut request_line)
+            .await
+            .map_err(|e| format!("Failed to read request: {}", e))?;
+
+        log::debug!("Received OAuth callback: {}", request_line);
+
+        // Parse the request to extract code and state
+        if let Some(path) = request_line.split_whitespace().nth(1) {
+            if let Some(query_start) = path.find('?') {
+                let query = &path[query_start + 1..];
+                let params: HashMap<&str, &str> = query
+                    .split('&')
+                    .filter_map(|pair| {
+                        let mut parts = pair.split('=');
+                        Some((parts.next()?, parts.next()?))
+                    })
+                    .collect();
+
+                if let Some(error) = params.get("error") {
+                    let response = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                        ERROR_HTML.len(),
+                        ERROR_HTML
+                    );
+                    let _ = writer.write_all(response.as_bytes()).await;
+                    return Err(format!("OAuth error: {}", error));
+                }
+
+                // Verify state
+                if let Some(received_state) = params.get("state") {
+                    if *received_state != expected_state {
+                        let response = format!(
+                            "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                            ERROR_HTML.len(),
+                            ERROR_HTML
+                        );
+                        let _ = writer.write_all(response.as_bytes()).await;
+                        return Err("Invalid state parameter - possible CSRF attack".to_string());
+                    }
+                }
+
+                // Extract code
+                if let Some(code) = params.get("code") {
+                    let response = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                        SUCCESS_HTML.len(),
+                        SUCCESS_HTML
+                    );
+                    let _ = writer.write_all(response.as_bytes()).await;
+                    return Ok(urlencoding::decode(code).unwrap_or_default().to_string());
+                }
+            }
+        }
+
+        // If we didn't get a valid OAuth callback, send an error and continue listening
+        let response = "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+        let _ = writer.write_all(response.as_bytes()).await;
+    }
 }
 
 /// Exchange authorization code for tokens
-#[tauri::command]
-pub async fn exchange_google_code(
-    app: tauri::AppHandle,
+async fn exchange_code_for_tokens(
+    app: &tauri::AppHandle,
     code: String,
     code_verifier: String,
     client_id: String,
@@ -173,7 +438,7 @@ pub async fn exchange_google_code(
     token.email = user_info.as_ref().and_then(|u| u.email.clone());
     token.display_name = user_info.as_ref().and_then(|u| u.name.clone());
 
-    auth::save_token(&app, &token).map_err(|e| String::from(e))?;
+    auth::save_token(app, &token).map_err(|e| String::from(e))?;
 
     Ok(AuthStatus::from_token(&token))
 }
