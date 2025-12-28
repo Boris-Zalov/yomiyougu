@@ -529,7 +529,7 @@
   </Modal>
 
   <!-- Import Success Modal -->
-  <Modal bind:open={showResultModal} size="xs" autoclose>
+  <Modal bind:open={showResultModal} size="md" autoclose>
     <div class="text-center">
       <CheckCircleSolid
         class="mx-auto mb-4 w-12 h-12 text-green-500 dark:text-green-400"
@@ -548,7 +548,7 @@
   </Modal>
 
   <!-- Error Modal -->
-  <Modal bind:open={showErrorModal} size="xs" autoclose>
+  <Modal bind:open={showErrorModal} size="md" autoclose>
     <div class="text-center">
       <CloseCircleSolid
         class="mx-auto mb-4 w-12 h-12 text-red-500 dark:text-red-400"
@@ -564,7 +564,7 @@
   </Modal>
 
   <!-- Delete Book Confirmation Modal -->
-  <Modal bind:open={showDeleteBookModal} size="xs">
+  <Modal bind:open={showDeleteBookModal} size="md">
     <div class="text-center">
       <TrashBinOutline
         class="mx-auto mb-4 w-12 h-12 text-red-500 dark:text-red-400"
@@ -602,7 +602,7 @@
   </Modal>
 
   <!-- Delete Collection Confirmation Modal -->
-  <Modal bind:open={showDeleteCollectionModal} size="xs">
+  <Modal bind:open={showDeleteCollectionModal} size="md">
     <div class="text-center">
       <TrashBinOutline
         class="mx-auto mb-4 w-12 h-12 text-red-500 dark:text-red-400"

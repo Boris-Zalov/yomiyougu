@@ -7,7 +7,7 @@ use tauri::{AppHandle, Manager};
 use tauri_plugin_fs::FsExt;
 
 use crate::database::models::{
-    Book, BookWithDetails, Collection, CollectionWithCount, NewCollection, UpdateBook,
+    Book, BookSettings, BookWithDetails, Collection, CollectionWithCount, NewCollection, UpdateBook,
     UpdateCollection,
 };
 use crate::database::operations;
@@ -156,6 +156,20 @@ pub async fn import_book_from_archive(
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
 
+    // Get default reading settings to apply to the new book
+    let default_reading_direction = settings
+        .get("reading.direction")
+        .and_then(|v| v.as_string())
+        .map(|s| s.to_string());
+    let default_page_display_mode = settings
+        .get("reading.page_display_mode")
+        .and_then(|v| v.as_string())
+        .map(|s| s.to_string());
+    let default_image_fit_mode = settings
+        .get("reading.image_fit_mode")
+        .and_then(|v| v.as_string())
+        .map(|s| s.to_string());
+
     let library_dir = app
         .path()
         .app_data_dir()
@@ -288,5 +302,54 @@ pub async fn import_book_from_archive(
         log::debug!("Cleaned up temp file: {:?}", temp_path);
     }
 
+    // If import was successful, create default book settings
+    if let Ok(ref book) = result {
+        // Only create settings if we have non-default values from app settings
+        let has_custom_defaults = default_reading_direction.is_some() 
+            || default_page_display_mode.is_some()
+            || default_image_fit_mode.is_some();
+        
+        if has_custom_defaults {
+            if let Err(e) = operations::update_book_settings(
+                book.id,
+                default_reading_direction.map(Some),
+                default_page_display_mode.map(Some),
+                default_image_fit_mode.map(Some),
+                None, // sync_progress - use global default
+            ) {
+                log::warn!("Failed to create default book settings for book {}: {}", book.id, e);
+            }
+        }
+    }
+
     result
+}
+
+// ============================================================================
+// BOOK SETTINGS COMMANDS
+// ============================================================================
+
+/// Get book settings by book ID
+#[tauri::command]
+pub async fn get_book_settings(book_id: i32) -> Result<Option<BookSettings>, String> {
+    operations::get_book_settings(book_id).map_err(|e| e.into())
+}
+
+/// Update book settings (creates if not exists)
+#[tauri::command]
+pub async fn update_book_settings(
+    book_id: i32,
+    reading_direction: Option<Option<String>>,
+    page_display_mode: Option<Option<String>>,
+    image_fit_mode: Option<Option<String>>,
+    sync_progress: Option<Option<bool>>,
+) -> Result<BookSettings, String> {
+    operations::update_book_settings(
+        book_id,
+        reading_direction,
+        page_display_mode,
+        image_fit_mode,
+        sync_progress,
+    )
+    .map_err(|e| e.into())
 }

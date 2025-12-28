@@ -188,7 +188,7 @@
   </div>
 
   <!-- Error Modal -->
-  <Modal bind:open={showErrorModal} size="xs" autoclose>
+  <Modal bind:open={showErrorModal} size="md" autoclose>
     <div class="text-center">
       <CloseCircleSolid
         class="mx-auto mb-4 w-12 h-12 text-red-500 dark:text-red-400"

@@ -15,6 +15,7 @@
     Checkbox,
     Card,
     P,
+    Hr,
   } from "flowbite-svelte";
   import {
     ArrowLeftOutline,
@@ -28,6 +29,7 @@
     type Book, 
     type ReadingStatus,
     type CollectionWithCount,
+    type BookSettings,
     getCoverPath,
   } from "$lib";
 
@@ -44,6 +46,13 @@
   let readingStatus = $state<ReadingStatus>("unread");
   let isFavorite = $state(false);
   let selectedCollectionIds = $state<number[]>([]);
+  
+  // Book settings
+  let readingDirection = $state<string | null>(null);
+  let pageDisplayMode = $state<string | null>(null);
+  let imageFitMode = $state<string | null>(null);
+  let syncProgress = $state<boolean | null>(null);
+  let originalSettings = $state<BookSettings | null>(null);
   
   // Validation
   let titleError = $state("");
@@ -80,14 +89,16 @@
 
   async function loadBook() {
     try {
-      const [bookData, collectionsData, booksWithDetails] = await Promise.all([
+      const [bookData, collectionsData, booksWithDetails, settingsData] = await Promise.all([
         libraryApi.getBook(bookId),
         libraryApi.getCollections(),
         libraryApi.getBooks(),
+        libraryApi.getBookSettings(bookId),
       ]);
       
       book = bookData;
       allCollections = collectionsData;
+      originalSettings = settingsData;
       
       // Find the book's current collections from the full details
       const bookDetails = booksWithDetails.find(b => b.id === bookId);
@@ -98,6 +109,14 @@
       readingStatus = book.reading_status;
       isFavorite = book.is_favorite;
       selectedCollectionIds = [...bookCollectionIds];
+      
+      // Initialize book settings
+      if (settingsData) {
+        readingDirection = settingsData.reading_direction;
+        pageDisplayMode = settingsData.page_display_mode;
+        imageFitMode = settingsData.image_fit_mode;
+        syncProgress = settingsData.sync_progress;
+      }
     } catch (error) {
       console.error("Failed to load book:", error);
       showError(parseError(error));
@@ -144,6 +163,27 @@
       
       if (collectionsChanged) {
         await libraryApi.setBookCollections(bookId, selectedCollectionIds);
+      }
+      
+      // Update book settings if any are set
+      const hasSettings = readingDirection !== null || 
+                          pageDisplayMode !== null || 
+                          imageFitMode !== null || 
+                          syncProgress !== null;
+      
+      const settingsChanged = 
+        readingDirection !== originalSettings?.reading_direction ||
+        pageDisplayMode !== originalSettings?.page_display_mode ||
+        imageFitMode !== originalSettings?.image_fit_mode ||
+        syncProgress !== originalSettings?.sync_progress;
+      
+      if (hasSettings && settingsChanged) {
+        await libraryApi.updateBookSettings(bookId, {
+          readingDirection,
+          pageDisplayMode,
+          imageFitMode,
+          syncProgress,
+        });
       }
       
       goto("/library");
@@ -275,6 +315,67 @@
         </div>
       {/if}
 
+      <Hr class="my-4" />
+
+      <!-- Reader Settings -->
+      <div>
+        <Heading tag="h6" class="mb-4">Reader Settings</Heading>
+        <Helper class="mb-4">Override default reading settings for this book</Helper>
+
+        <!-- Reading Direction -->
+        <div class="mb-4">
+          <Label class="mb-2">Reading Direction</Label>
+          <RadioDropdown
+            bind:value={readingDirection}
+            options={[
+              { value: "ltr", label: "Left to Right", description: "Western style" },
+              { value: "rtl", label: "Right to Left", description: "Manga style" },
+              { value: "vertical", label: "Vertical", description: "Webtoon style" },
+            ]}
+            displayValue={readingDirection ? undefined : "Use default"}
+          />
+        </div>
+
+        <!-- Page Display Mode -->
+        <div class="mb-4">
+          <Label class="mb-2">Page Display Mode</Label>
+          <RadioDropdown
+            bind:value={pageDisplayMode}
+            options={[
+              { value: "single", label: "Single Page", description: "One page at a time" },
+              { value: "double", label: "Double Page", description: "Two pages side by side" },
+              { value: "auto", label: "Auto", description: "Adjust based on screen size" },
+            ]}
+            displayValue={pageDisplayMode ? undefined : "Use default"}
+          />
+        </div>
+
+        <!-- Image Fit Mode -->
+        <div class="mb-4">
+          <Label class="mb-2">Image Fit Mode</Label>
+          <RadioDropdown
+            bind:value={imageFitMode}
+            options={[
+              { value: "fit_width", label: "Fit Width", description: "Scale to screen width" },
+              { value: "fit_height", label: "Fit Height", description: "Scale to screen height" },
+              { value: "fit_screen", label: "Fit Screen", description: "Fit entire page" },
+              { value: "original", label: "Original", description: "No scaling" },
+            ]}
+            displayValue={imageFitMode ? undefined : "Use default"}
+          />
+        </div>
+
+        <!-- Sync Progress Toggle -->
+        <div class="flex items-center gap-3">
+          <Toggle 
+            checked={syncProgress ?? false} 
+            onchange={() => syncProgress = syncProgress === null ? true : !syncProgress}
+            disabled={isSaving} 
+          />
+          <span class="text-sm text-gray-700 dark:text-gray-300">Sync reading progress for this book</span>
+        </div>
+      </div>
+
       <!-- Actions -->
       <div class="flex gap-3 pt-4">
         <Button
@@ -304,7 +405,7 @@
   </div>
 
   <!-- Error Modal -->
-  <Modal bind:open={showErrorModal} size="xs" autoclose>
+  <Modal bind:open={showErrorModal} size="md" autoclose>
     <div class="text-center">
       <CloseCircleSolid
         class="mx-auto mb-4 w-12 h-12 text-red-500 dark:text-red-400"

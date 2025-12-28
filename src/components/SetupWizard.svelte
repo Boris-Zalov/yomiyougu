@@ -205,7 +205,7 @@
   </div>
 
   <!-- Error modal -->
-  <Modal bind:open={showError} size="xs" autoclose>
+  <Modal bind:open={showError} size="md" autoclose>
     <div class="text-center">
       <Heading tag="h3" class="mb-4 text-lg">{errorMessage}</Heading>
       <Button color="red" onclick={() => (showError = false)}>Close</Button>

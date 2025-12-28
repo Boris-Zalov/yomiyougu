@@ -72,6 +72,9 @@ pub fn run() {
             commands::set_book_collections,
             commands::add_book_to_collection,
             commands::remove_book_from_collection,
+            // Library commands - book settings
+            commands::get_book_settings,
+            commands::update_book_settings,
             // Sync commands
             commands::get_sync_status,
             commands::sync_now,

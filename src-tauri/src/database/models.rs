@@ -259,16 +259,6 @@ pub enum ImageFitMode {
     Original,
 }
 
-/// Reader background options
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ReaderBackground {
-    White,
-    Black,
-    Gray,
-    Sepia,
-}
-
 /// Book-specific settings overrides
 #[derive(
     Debug, Clone, Queryable, Identifiable, Selectable, Associations, Serialize, Deserialize,
@@ -282,7 +272,6 @@ pub struct BookSettings {
     pub reading_direction: Option<String>,
     pub page_display_mode: Option<String>,
     pub image_fit_mode: Option<String>,
-    pub reader_background: Option<String>,
     pub sync_progress: Option<bool>,
     pub updated_at: chrono::NaiveDateTime,
     pub uuid: Option<String>,
@@ -297,7 +286,6 @@ pub struct NewBookSettings {
     pub reading_direction: Option<String>,
     pub page_display_mode: Option<String>,
     pub image_fit_mode: Option<String>,
-    pub reader_background: Option<String>,
     pub sync_progress: Option<bool>,
     pub uuid: Option<String>,
 }
@@ -309,7 +297,6 @@ pub struct UpdateBookSettings {
     pub reading_direction: Option<Option<String>>,
     pub page_display_mode: Option<Option<String>>,
     pub image_fit_mode: Option<Option<String>>,
-    pub reader_background: Option<Option<String>>,
     pub sync_progress: Option<Option<bool>>,
     pub updated_at: Option<chrono::NaiveDateTime>,
 }

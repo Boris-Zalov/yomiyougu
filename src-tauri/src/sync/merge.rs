@@ -111,6 +111,20 @@ impl MergeEngine {
             .load(conn)
             .map_err(|e| AppError::database_error(e.to_string()))?;
 
+        // Load all book settings to check per-book sync_progress setting
+        let all_book_settings: Vec<BookSettings> = book_settings::table
+            .filter(book_settings::deleted_at.is_null())
+            .load(conn)
+            .map_err(|e| AppError::database_error(e.to_string()))?;
+        
+        // Build book_id -> sync_progress map
+        // If sync_progress is Some(false), don't sync that book's progress
+        // If sync_progress is Some(true) or None, sync it (default behavior)
+        let sync_progress_by_book: HashMap<i32, bool> = all_book_settings
+            .iter()
+            .filter_map(|bs| bs.sync_progress.map(|sp| (bs.book_id, sp)))
+            .collect();
+
         // Build UUID -> Book map for local books
         let local_by_uuid: HashMap<String, &Book> = local_books
             .iter()
@@ -127,6 +141,18 @@ impl MergeEngine {
         for (uuid, remote_book) in snapshot.books.iter() {
             match local_by_uuid.get(uuid) {
                 Some(local_book) => {
+                    // Check if this book has sync disabled
+                    let book_sync_enabled = sync_progress_by_book
+                        .get(&local_book.id)
+                        .copied()
+                        .unwrap_or(true); // Default to true if not set
+                    
+                    if !full_sync && !book_sync_enabled {
+                        // Skip this book's progress sync if per-book sync is disabled
+                        log::debug!("Skipping progress sync for book {} (sync disabled)", local_book.id);
+                        continue;
+                    }
+
                     // Both exist - resolve conflict
                     let local_ts = to_timestamp(&local_book.updated_at);
                     let remote_ts = remote_book.updated_at;
@@ -211,6 +237,18 @@ impl MergeEngine {
                 Some(u) => u.clone(),
                 None => continue, // Skip books without UUID (shouldn't happen after migration)
             };
+
+            // Check if this book has sync disabled
+            let book_sync_enabled = sync_progress_by_book
+                .get(&local_book.id)
+                .copied()
+                .unwrap_or(true); // Default to true if not set
+            
+            if !full_sync && !book_sync_enabled {
+                // Skip this book's progress upload if per-book sync is disabled
+                log::debug!("Skipping progress upload for book {} (sync disabled)", local_book.id);
+                continue;
+            }
 
             let local_ts = to_timestamp(&local_book.updated_at);
 
@@ -617,7 +655,6 @@ impl MergeEngine {
                         book_settings::reading_direction.eq(&remote_bs.reading_direction),
                         book_settings::page_display_mode.eq(&remote_bs.page_display_mode),
                         book_settings::image_fit_mode.eq(&remote_bs.image_fit_mode),
-                        book_settings::reader_background.eq(&remote_bs.reader_background),
                         book_settings::sync_progress.eq(remote_bs.sync_progress),
                     ))
                     .execute(conn)
@@ -644,7 +681,6 @@ impl MergeEngine {
                     reading_direction: local_bs.reading_direction.clone(),
                     page_display_mode: local_bs.page_display_mode.clone(),
                     image_fit_mode: local_bs.image_fit_mode.clone(),
-                    reader_background: local_bs.reader_background.clone(),
                     sync_progress: local_bs.sync_progress,
                     updated_at: to_timestamp(&local_bs.updated_at),
                     deleted_at: local_bs.deleted_at.map(|dt| to_timestamp(&dt)),
