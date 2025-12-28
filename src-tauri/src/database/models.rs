@@ -3,7 +3,7 @@
 use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::schema::{book_collections, book_settings, bookmarks, books, collections};
+use crate::schema::{book_collections, book_settings, bookmarks, books, collections, sync_state};
 
 // ============================================================================
 // COLLECTIONS
@@ -19,6 +19,8 @@ pub struct Collection {
     pub description: Option<String>,
     pub created_at: chrono::NaiveDateTime,
     pub updated_at: chrono::NaiveDateTime,
+    pub uuid: Option<String>,
+    pub deleted_at: Option<chrono::NaiveDateTime>,
 }
 
 /// New collection for insertion
@@ -27,6 +29,7 @@ pub struct Collection {
 pub struct NewCollection {
     pub name: String,
     pub description: Option<String>,
+    pub uuid: Option<String>,
 }
 
 /// Collection update (partial)
@@ -55,6 +58,9 @@ pub struct BookCollection {
     pub book_id: i32,
     pub collection_id: i32,
     pub added_at: chrono::NaiveDateTime,
+    pub uuid: Option<String>,
+    pub updated_at: Option<chrono::NaiveDateTime>,
+    pub deleted_at: Option<chrono::NaiveDateTime>,
 }
 
 /// New book-collection relationship for insertion
@@ -63,6 +69,7 @@ pub struct BookCollection {
 pub struct NewBookCollection {
     pub book_id: i32,
     pub collection_id: i32,
+    pub uuid: Option<String>,
 }
 
 // ============================================================================
@@ -121,6 +128,8 @@ pub struct Book {
     pub updated_at: chrono::NaiveDateTime,
     pub is_favorite: bool,
     pub reading_status: String,
+    pub uuid: Option<String>,
+    pub deleted_at: Option<chrono::NaiveDateTime>,
 }
 
 impl Book {
@@ -149,6 +158,7 @@ pub struct NewBook {
     pub file_hash: Option<String>,
     pub title: String,
     pub total_pages: i32,
+    pub uuid: Option<String>,
 }
 
 /// Book update (partial)
@@ -182,6 +192,9 @@ pub struct Bookmark {
     pub description: Option<String>,
     pub page: i32,
     pub created_at: chrono::NaiveDateTime,
+    pub uuid: Option<String>,
+    pub updated_at: Option<chrono::NaiveDateTime>,
+    pub deleted_at: Option<chrono::NaiveDateTime>,
 }
 
 /// New bookmark for insertion
@@ -192,6 +205,7 @@ pub struct NewBookmark {
     pub name: String,
     pub description: Option<String>,
     pub page: i32,
+    pub uuid: Option<String>,
 }
 
 // ============================================================================
@@ -271,6 +285,8 @@ pub struct BookSettings {
     pub reader_background: Option<String>,
     pub sync_progress: Option<bool>,
     pub updated_at: chrono::NaiveDateTime,
+    pub uuid: Option<String>,
+    pub deleted_at: Option<chrono::NaiveDateTime>,
 }
 
 /// New book settings for insertion
@@ -283,6 +299,7 @@ pub struct NewBookSettings {
     pub image_fit_mode: Option<String>,
     pub reader_background: Option<String>,
     pub sync_progress: Option<bool>,
+    pub uuid: Option<String>,
 }
 
 /// Book settings update (partial)
@@ -321,20 +338,25 @@ pub struct CollectionWithCount {
 }
 
 // ============================================================================
-// IMPORT RESULTS
+// SYNC STATE
 // ============================================================================
 
-/// Information about a skipped book during import
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SkippedBook {
-    pub title: String,
-    pub reason: String,
-    pub existing_book_id: Option<i32>,
+/// Sync state tracking for synchronization
+#[derive(Debug, Clone, Queryable, Identifiable, Selectable, Serialize, Deserialize)]
+#[diesel(table_name = sync_state)]
+#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+pub struct SyncState {
+    pub id: i32,
+    pub last_sync_at: Option<chrono::NaiveDateTime>,
+    pub last_sync_device: Option<String>,
+    pub sync_file_id: Option<String>,
 }
 
-/// Result of importing books from an archive
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ImportResult {
-    pub imported: Vec<Book>,
-    pub skipped: Vec<SkippedBook>,
+/// Sync state update
+#[derive(Debug, Default, AsChangeset, Serialize, Deserialize)]
+#[diesel(table_name = sync_state)]
+pub struct UpdateSyncState {
+    pub last_sync_at: Option<Option<chrono::NaiveDateTime>>,
+    pub last_sync_device: Option<Option<String>>,
+    pub sync_file_id: Option<Option<String>>,
 }

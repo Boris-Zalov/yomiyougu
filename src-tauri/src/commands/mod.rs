@@ -5,10 +5,12 @@
 //! - Convert AppError to String for frontend consumption
 //! - Follow snake_case naming (invoked as camelCase from JS)
 
-mod auth;
+pub mod auth;
 mod library;
 mod settings;
+mod sync;
 
 pub use auth::*;
 pub use library::*;
 pub use settings::*;
+pub use sync::*;

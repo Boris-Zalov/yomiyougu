@@ -24,7 +24,11 @@ pub async fn create_collection(
     name: String,
     description: Option<String>,
 ) -> Result<Collection, String> {
-    let new_collection = NewCollection { name, description };
+    let new_collection = NewCollection { 
+        name, 
+        description,
+        uuid: Some(uuid::Uuid::new_v4().to_string()),
+    };
 
     operations::create_collection(new_collection).map_err(|e| e.into())
 }
@@ -147,8 +151,8 @@ pub async fn import_book_from_archive(
     use std::io::{Read, Write};
 
     let settings = storage::load_settings(&app).map_err(|e: AppError| e)?;
-    let backup_files = settings
-        .get("library.backup_imported_files")
+    let save_to_app_storage = settings
+        .get("library.save_to_app_storage")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
 
@@ -167,6 +171,10 @@ pub async fn import_book_from_archive(
 
     // Determine if this is an Android content URI or a regular file path
     let is_content_uri = file_path.starts_with("content://");
+
+    // For Android content URIs, file MUST be saved to app storage because the cache is temporary
+    // and content URIs can't be referenced later (system restriction)
+    let effective_save_to_storage = if is_content_uri { true } else { save_to_app_storage };
 
     // Get the actual file path to process
     let (archive_path, temp_file_path) = if is_content_uri {
@@ -256,7 +264,7 @@ pub async fn import_book_from_archive(
         return Err("Only .zip, .cbz, .rar, and .cbr files are supported".into());
     }
 
-    if backup_files {
+    if effective_save_to_storage {
         std::fs::create_dir_all(&library_dir)
             .map_err(|e| format!("Failed to create library directory: {}", e))?;
     }
@@ -266,7 +274,7 @@ pub async fn import_book_from_archive(
         operations::import_book_from_archive(
             &archive_path,
             collection_id,
-            backup_files,
+            effective_save_to_storage,
             &library_dir,
             original_filename,
         )
@@ -276,10 +284,8 @@ pub async fn import_book_from_archive(
     .map_err(|e| format!("Task failed: {}", e))?;
 
     if let Some(temp_path) = temp_file_path {
-        if !backup_files {
-            let _ = std::fs::remove_file(&temp_path);
-            log::debug!("Cleaned up temp file: {:?}", temp_path);
-        }
+        let _ = std::fs::remove_file(&temp_path);
+        log::debug!("Cleaned up temp file: {:?}", temp_path);
     }
 
     result

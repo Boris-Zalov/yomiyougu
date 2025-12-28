@@ -47,12 +47,13 @@ pub fn create_collection(new_collection: NewCollection) -> Result<Collection, Ap
         })
 }
 
-/// Get all collections with book counts
+/// Get all collections with book counts (excludes soft-deleted)
 pub fn get_all_collections() -> Result<Vec<CollectionWithCount>, AppError> {
     debug!("Fetching all collections with book counts");
     let mut conn = establish_connection()?;
 
     let collections_list = collections::table
+        .filter(collections::deleted_at.is_null())
         .select(Collection::as_select())
         .load(&mut conn)
         .map_err(|e| {
@@ -62,11 +63,14 @@ pub fn get_all_collections() -> Result<Vec<CollectionWithCount>, AppError> {
             )
         })?;
 
-    // Get book counts for each collection via junction table
+    // Get book counts for each collection via junction table (exclude deleted books)
     let mut result = Vec::new();
     for collection in collections_list {
         let count = book_collections::table
+            .inner_join(books::table)
             .filter(book_collections::collection_id.eq(collection.id))
+            .filter(book_collections::deleted_at.is_null())
+            .filter(books::deleted_at.is_null())
             .count()
             .get_result::<i64>(&mut conn)
             .unwrap_or(0);
@@ -81,12 +85,13 @@ pub fn get_all_collections() -> Result<Vec<CollectionWithCount>, AppError> {
     Ok(result)
 }
 
-/// Get a single collection by ID
+/// Get a single collection by ID (returns error if soft-deleted)
 pub fn get_collection_by_id(collection_id: i32) -> Result<Collection, AppError> {
     let mut conn = establish_connection()?;
 
     collections::table
         .find(collection_id)
+        .filter(collections::deleted_at.is_null())
         .select(Collection::as_select())
         .first(&mut conn)
         .map_err(|e| {
@@ -125,12 +130,18 @@ pub fn update_collection(
         })
 }
 
-/// Delete a collection (book_collections entries are deleted via CASCADE)
+/// Delete a collection (soft delete - sets deleted_at)
 pub fn delete_collection(collection_id: i32) -> Result<(), AppError> {
-    info!("Deleting collection ID: {}", collection_id);
+    info!("Soft-deleting collection ID: {}", collection_id);
     let mut conn = establish_connection()?;
 
-    diesel::delete(collections::table.find(collection_id))
+    let now = chrono::Utc::now().naive_utc();
+    
+    diesel::update(collections::table.find(collection_id))
+        .set((
+            collections::deleted_at.eq(Some(now)),
+            collections::updated_at.eq(now),
+        ))
         .execute(&mut conn)
         .map_err(|e| {
             error!("Failed to delete collection {}: {}", collection_id, e);
@@ -140,7 +151,7 @@ pub fn delete_collection(collection_id: i32) -> Result<(), AppError> {
             )
         })?;
 
-    info!("Collection {} deleted successfully", collection_id);
+    info!("Collection {} soft-deleted successfully", collection_id);
     Ok(())
 }
 
@@ -193,6 +204,7 @@ pub fn get_all_books(
         Some(
             book_collections::table
                 .filter(book_collections::collection_id.eq(cid))
+                .filter(book_collections::deleted_at.is_null())
                 .select(book_collections::book_id)
                 .load(&mut conn)
                 .map_err(|e| {
@@ -206,7 +218,10 @@ pub fn get_all_books(
         None
     };
 
-    let mut query = books::table.into_boxed();
+    // Start with filter for non-deleted books
+    let mut query = books::table
+        .filter(books::deleted_at.is_null())
+        .into_boxed();
 
     if let Some(ref ids) = book_ids_in_collection {
         query = query.filter(books::id.eq_any(ids));
@@ -305,12 +320,18 @@ pub fn update_book(book_id: i32, updates: UpdateBook) -> Result<Book, AppError> 
         })
 }
 
-/// Delete a book
+/// Delete a book (soft delete - sets deleted_at)
 pub fn delete_book(book_id: i32) -> Result<(), AppError> {
-    info!("Deleting book ID: {}", book_id);
+    info!("Soft-deleting book ID: {}", book_id);
     let mut conn = establish_connection()?;
 
-    diesel::delete(books::table.find(book_id))
+    let now = chrono::Utc::now().naive_utc();
+    
+    diesel::update(books::table.find(book_id))
+        .set((
+            books::deleted_at.eq(Some(now)),
+            books::updated_at.eq(now),
+        ))
         .execute(&mut conn)
         .map_err(|e| {
             error!("Failed to delete book {}: {}", book_id, e);
@@ -320,16 +341,17 @@ pub fn delete_book(book_id: i32) -> Result<(), AppError> {
             )
         })?;
 
-    info!("Book {} deleted successfully", book_id);
+    info!("Book {} soft-deleted successfully", book_id);
     Ok(())
 }
 
-/// Check if a file hash already exists in the database
+/// Check if a file hash already exists in the database (excludes soft-deleted)
 pub fn find_book_by_hash(file_hash: &str) -> Result<Option<Book>, AppError> {
     let mut conn = establish_connection()?;
 
     books::table
         .filter(books::file_hash.eq(file_hash))
+        .filter(books::deleted_at.is_null())
         .select(Book::as_select())
         .first(&mut conn)
         .optional()
@@ -800,6 +822,7 @@ pub fn import_book_from_archive(
         file_hash: Some(book_hash),
         title: title.clone(),
         total_pages,
+        uuid: Some(uuid::Uuid::new_v4().to_string()),
     };
 
     let book = create_book(new_book)?;
@@ -828,6 +851,7 @@ pub fn add_book_to_collection(
     let new_entry = NewBookCollection {
         book_id,
         collection_id,
+        uuid: Some(uuid::Uuid::new_v4().to_string()),
     };
 
     diesel::insert_into(book_collections::table)
@@ -885,23 +909,6 @@ pub fn remove_book_from_collection(book_id: i32, collection_id: i32) -> Result<(
     Ok(())
 }
 
-/// Get all collections for a book
-pub fn get_book_collections(book_id: i32) -> Result<Vec<Collection>, AppError> {
-    let mut conn = establish_connection()?;
-
-    book_collections::table
-        .inner_join(collections::table)
-        .filter(book_collections::book_id.eq(book_id))
-        .select(Collection::as_select())
-        .load(&mut conn)
-        .map_err(|e| {
-            AppError::new(
-                ErrorCode::DatabaseQueryFailed,
-                format!("Failed to get collections for book: {}", e),
-            )
-        })
-}
-
 /// Set the collections for a book (replaces existing)
 pub fn set_book_collections(book_id: i32, collection_ids: Vec<i32>) -> Result<(), AppError> {
     info!(
@@ -925,6 +932,7 @@ pub fn set_book_collections(book_id: i32, collection_ids: Vec<i32>) -> Result<()
         let new_entry = NewBookCollection {
             book_id,
             collection_id: cid,
+            uuid: Some(uuid::Uuid::new_v4().to_string()),
         };
 
         diesel::insert_into(book_collections::table)

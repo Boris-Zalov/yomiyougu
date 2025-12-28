@@ -37,11 +37,13 @@ zip = "2.2"
 sha2 = "0.10"
 log = "0.4"
 env_logger = "0.11"
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "multipart"] }
 rand = "0.8"
 base64 = "0.22"
-tokio = { version = "1", features = ["net", "io-util", "time"] }
+tokio = { version = "1", features = ["net", "io-util", "time", "sync"] }
 argon2 = "0.4"
+uuid = { version = "1", features = ["v4", "serde"] }
+thiserror = "2"
 
 # Bundle SQLite for Android/iOS (no system library available)
 libsqlite3-sys = { version = "0.35", features = ["bundled"] }

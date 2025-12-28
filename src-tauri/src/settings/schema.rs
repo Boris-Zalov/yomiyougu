@@ -11,6 +11,7 @@ pub fn create_default_settings() -> AppSettings {
         version: SETTINGS_VERSION,
         setup_completed: false,
         accepted_license: false,
+        updated_at: 0, // Will be set when first saved
         categories: vec![
             create_appearance_category(),
             create_reading_category(),
@@ -74,9 +75,9 @@ fn create_library_category() -> SettingCategory {
         .with_icon("library")
         .add_settings(vec![
             SettingItem::new(
-                "library.backup_imported_files",
-                "Backup Imported Files",
-                "Copy imported files to app storage to prevent data loss if originals are moved or deleted",
+                "library.save_to_app_storage",
+                "Save Imported Files to App Storage",
+                "Store imported files in app storage for reliable access. Files remain available even if originals are moved or deleted. Note: This option is always enabled on Android due to system restrictions.",
                 WidgetType::Toggle,
                 SettingValue::Bool(false),
             ),

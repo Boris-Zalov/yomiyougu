@@ -6,22 +6,12 @@
 
 use crate::auth::{self, AuthStatus, AuthToken};
 use rand::Rng;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use tauri_plugin_opener::OpenerExt;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpListener;
-
-/// OAuth configuration returned to frontend
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct OAuthConfig {
-    pub auth_url: String,
-    pub state: String,
-    pub code_verifier: String,
-    pub port: u16,
-}
 
 /// Token response from Google OAuth
 #[derive(Debug, Deserialize)]
@@ -458,16 +448,32 @@ pub async fn refresh_google_token(
     // Load existing token
     let token = auth::load_token(&app).map_err(|e| String::from(e))?;
 
+    let new_token = refresh_token_internal(&client_id, &client_secret, &token)
+        .await
+        .map_err(|e| String::from(e))?;
+
+    auth::save_token(&app, &new_token).map_err(|e| String::from(e))?;
+
+    log::info!("Token refreshed successfully");
+    Ok(AuthStatus::from_token(&new_token))
+}
+
+/// Internal function to refresh a token (reusable from other modules)
+pub async fn refresh_token_internal(
+    client_id: &str,
+    client_secret: &str,
+    token: &AuthToken,
+) -> Result<AuthToken, crate::error::AppError> {
     let refresh_token = token
         .refresh_token
         .as_ref()
-        .ok_or_else(|| "No refresh token available. Please sign in again.".to_string())?;
+        .ok_or_else(|| crate::error::AppError::not_authenticated())?;
 
     let client = reqwest::Client::new();
 
     let mut params = HashMap::new();
-    params.insert("client_id", client_id);
-    params.insert("client_secret", client_secret);
+    params.insert("client_id", client_id.to_string());
+    params.insert("client_secret", client_secret.to_string());
     params.insert("refresh_token", refresh_token.clone());
     params.insert("grant_type", "refresh_token".to_string());
 
@@ -476,18 +482,18 @@ pub async fn refresh_google_token(
         .form(&params)
         .send()
         .await
-        .map_err(|e| format!("Failed to refresh token: {}", e))?;
+        .map_err(|e| crate::error::AppError::sync_failed(format!("Failed to refresh token: {}", e)))?;
 
     if !response.status().is_success() {
         let error_text = response.text().await.unwrap_or_default();
         log::error!("Token refresh failed: {}", error_text);
-        return Err(format!("Token refresh failed: {}", error_text));
+        return Err(crate::error::AppError::sync_failed(format!("Token refresh failed: {}", error_text)));
     }
 
     let token_response: GoogleTokenResponse = response
         .json()
         .await
-        .map_err(|e| format!("Failed to parse token response: {}", e))?;
+        .map_err(|e| crate::error::AppError::sync_failed(format!("Failed to parse token response: {}", e)))?;
 
     // Calculate expiration time
     let expires_at = token_response.expires_in.map(|expires_in| {
@@ -499,15 +505,12 @@ pub async fn refresh_google_token(
 
     // Update token (keep existing refresh token if new one not provided)
     let mut new_token = AuthToken::new(token_response.access_token);
-    new_token.refresh_token = token_response.refresh_token.or(token.refresh_token);
+    new_token.refresh_token = token_response.refresh_token.or(token.refresh_token.clone());
     new_token.expires_at = expires_at;
-    new_token.email = token.email;
-    new_token.display_name = token.display_name;
+    new_token.email = token.email.clone();
+    new_token.display_name = token.display_name.clone();
 
-    auth::save_token(&app, &new_token).map_err(|e| String::from(e))?;
-
-    log::info!("Token refreshed successfully");
-    Ok(AuthStatus::from_token(&new_token))
+    Ok(new_token)
 }
 
 /// Fetch user info from Google

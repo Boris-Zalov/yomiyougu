@@ -5,15 +5,17 @@
 //! - `commands/` - Tauri commands exposed to frontend
 //! - `database/` - Diesel ORM models and connection management
 //! - `settings/` - Configuration management with UI schema generation
+//! - `sync/` - Google Drive synchronization
 //! - `error` - Application-wide error types
 //! - `schema` - Auto-generated Diesel schema
 
-mod auth;
+pub mod auth;
 mod commands;
 mod database;
 mod error;
 mod schema;
 mod settings;
+mod sync;
 
 pub use database::{establish_connection, DbPool};
 pub use error::AppError;
@@ -70,6 +72,9 @@ pub fn run() {
             commands::set_book_collections,
             commands::add_book_to_collection,
             commands::remove_book_from_collection,
+            // Sync commands
+            commands::get_sync_status,
+            commands::sync_now,
         ])
         .run(tauri::generate_context!())
         .expect("Critical error while running tauri application");

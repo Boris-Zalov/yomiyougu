@@ -105,3 +105,9 @@ pub fn establish_connection(
         )
     })
 }
+
+/// Alias for establish_connection (for backwards compatibility)
+pub fn get_connection(
+) -> Result<r2d2::PooledConnection<ConnectionManager<SqliteConnection>>, AppError> {
+    establish_connection()
+}

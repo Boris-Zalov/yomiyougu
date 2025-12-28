@@ -6,6 +6,9 @@ diesel::table! {
         book_id -> Integer,
         collection_id -> Integer,
         added_at -> Timestamp,
+        uuid -> Nullable<Text>,
+        updated_at -> Nullable<Timestamp>,
+        deleted_at -> Nullable<Timestamp>,
     }
 }
 
@@ -19,6 +22,8 @@ diesel::table! {
         reader_background -> Nullable<Text>,
         sync_progress -> Nullable<Bool>,
         updated_at -> Timestamp,
+        uuid -> Nullable<Text>,
+        deleted_at -> Nullable<Timestamp>,
     }
 }
 
@@ -30,6 +35,9 @@ diesel::table! {
         description -> Nullable<Text>,
         page -> Integer,
         created_at -> Timestamp,
+        uuid -> Nullable<Text>,
+        updated_at -> Nullable<Timestamp>,
+        deleted_at -> Nullable<Timestamp>,
     }
 }
 
@@ -48,6 +56,8 @@ diesel::table! {
         updated_at -> Timestamp,
         is_favorite -> Bool,
         reading_status -> Text,
+        uuid -> Nullable<Text>,
+        deleted_at -> Nullable<Timestamp>,
     }
 }
 
@@ -58,6 +68,17 @@ diesel::table! {
         description -> Nullable<Text>,
         created_at -> Timestamp,
         updated_at -> Timestamp,
+        uuid -> Nullable<Text>,
+        deleted_at -> Nullable<Timestamp>,
+    }
+}
+
+diesel::table! {
+    sync_state (id) {
+        id -> Integer,
+        last_sync_at -> Nullable<Timestamp>,
+        last_sync_device -> Nullable<Text>,
+        sync_file_id -> Nullable<Text>,
     }
 }
 
@@ -72,4 +93,5 @@ diesel::allow_tables_to_appear_in_same_query!(
     bookmarks,
     books,
     collections,
+    sync_state,
 );
