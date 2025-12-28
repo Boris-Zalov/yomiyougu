@@ -114,14 +114,6 @@ pub struct SelectOption {
 }
 
 impl SelectOption {
-    pub fn new(value: impl Into<String>, label: impl Into<String>) -> Self {
-        Self {
-            value: value.into(),
-            label: label.into(),
-            description: None,
-        }
-    }
-
     pub fn with_description(
         value: impl Into<String>,
         label: impl Into<String>,
@@ -178,16 +170,6 @@ impl SettingItem {
             platforms: Vec::new(),
         }
     }
-
-    pub fn with_restart(mut self) -> Self {
-        self.requires_restart = true;
-        self
-    }
-
-    pub fn for_platforms(mut self, platforms: Vec<&str>) -> Self {
-        self.platforms = platforms.into_iter().map(String::from).collect();
-        self
-    }
 }
 
 /// Category grouping related settings
@@ -227,11 +209,6 @@ impl SettingCategory {
         self
     }
 
-    pub fn add_setting(mut self, setting: SettingItem) -> Self {
-        self.settings.push(setting);
-        self
-    }
-
     pub fn add_settings(mut self, settings: Vec<SettingItem>) -> Self {
         self.settings.extend(settings);
         self
@@ -248,6 +225,9 @@ pub struct AppSettings {
     pub setup_completed: bool,
     /// License/terms acceptance
     pub accepted_license: bool,
+    /// Timestamp when settings were last modified (milliseconds since epoch)
+    #[serde(default)]
+    pub updated_at: i64,
     /// All setting categories
     pub categories: Vec<SettingCategory>,
 }
@@ -276,17 +256,6 @@ impl AppSettings {
             }
         }
         false
-    }
-
-    /// Get all settings as a flat key-value map
-    pub fn to_flat_map(&self) -> std::collections::HashMap<String, SettingValue> {
-        let mut map = std::collections::HashMap::new();
-        for category in &self.categories {
-            for setting in &category.settings {
-                map.insert(setting.key.clone(), setting.value.clone());
-            }
-        }
-        map
     }
 
     /// Reset a setting to its default value

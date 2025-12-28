@@ -24,7 +24,10 @@ pub enum ErrorCode {
     DatabaseMigrationFailed,
     DatabaseQueryFailed,
     DatabasePathError,
+    DatabaseError,
     DuplicateEntry,
+    NotAuthenticated,
+    SyncFailed,
 }
 
 impl AppError {
@@ -78,6 +81,24 @@ impl AppError {
         Self::new(
             ErrorCode::InvalidSettingValue,
             format!("Invalid value for '{}': {}", key, reason),
+        )
+    }
+
+    pub fn not_authenticated() -> Self {
+        Self::new(ErrorCode::NotAuthenticated, "Not authenticated with Google")
+    }
+
+    pub fn sync_failed(err: impl fmt::Display) -> Self {
+        Self::new(
+            ErrorCode::SyncFailed,
+            format!("Sync failed: {}", err),
+        )
+    }
+
+    pub fn database_error(err: impl fmt::Display) -> Self {
+        Self::new(
+            ErrorCode::DatabaseError,
+            format!("Database error: {}", err),
         )
     }
 }

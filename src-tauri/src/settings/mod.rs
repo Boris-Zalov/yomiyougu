@@ -9,6 +9,5 @@ mod schema;
 pub mod storage;
 mod types;
 
-pub use schema::*;
 pub use storage::*;
 pub use types::*;

@@ -45,25 +45,36 @@ pub fn load_settings(app: &tauri::AppHandle) -> Result<AppSettings, AppError> {
 
 /// Save settings to disk
 pub fn save_settings(app: &tauri::AppHandle, settings: &AppSettings) -> Result<(), AppError> {
+    save_settings_internal(app, settings, true)
+}
+
+/// Save settings without updating the timestamp (used for sync-only changes)
+pub fn save_settings_no_timestamp(app: &tauri::AppHandle, settings: &AppSettings) -> Result<(), AppError> {
+    save_settings_internal(app, settings, false)
+}
+
+/// Internal save function with timestamp control
+fn save_settings_internal(app: &tauri::AppHandle, settings: &AppSettings, update_timestamp: bool) -> Result<(), AppError> {
     let path = get_settings_path(app)?;
+    
+    // Check if this is an update (file exists) or initial creation
+    let is_update = path.exists();
 
     // Ensure directory exists
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(AppError::config_write_failed)?;
     }
 
-    let json = serde_json::to_string_pretty(settings).map_err(AppError::serialization_failed)?;
+    let mut settings = settings.clone();
+    if is_update && update_timestamp {
+        settings.updated_at = chrono::Utc::now().timestamp_millis();
+    }
+
+    let json = serde_json::to_string_pretty(&settings).map_err(AppError::serialization_failed)?;
 
     fs::write(&path, json).map_err(AppError::config_write_failed)?;
 
     Ok(())
-}
-
-/// Initialize settings with defaults and save to disk
-pub fn initialize_settings(app: &tauri::AppHandle) -> Result<AppSettings, AppError> {
-    let settings = create_default_settings();
-    save_settings(app, &settings)?;
-    Ok(settings)
 }
 
 /// Update specific settings from a key-value map (used by UI)
@@ -72,6 +83,9 @@ pub fn update_settings_from_map(
     updates: std::collections::HashMap<String, serde_json::Value>,
 ) -> Result<AppSettings, AppError> {
     let mut settings = load_settings(app)?;
+    
+    // Check if only sync settings are being changed (shouldn't update timestamp)
+    let only_sync_keys = updates.keys().all(|k| k.starts_with("sync."));
 
     for (key, value) in updates {
         let setting_value = json_to_setting_value(value)
@@ -82,7 +96,11 @@ pub fn update_settings_from_map(
         }
     }
 
-    save_settings(app, &settings)?;
+    if only_sync_keys {
+        save_settings_no_timestamp(app, &settings)?;
+    } else {
+        save_settings(app, &settings)?;
+    }
     Ok(settings)
 }
 

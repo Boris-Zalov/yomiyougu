@@ -12,17 +12,23 @@
     Input,
     Textarea,
     Helper,
+    Tooltip,
   } from "flowbite-svelte";
   import {
     PlusOutline,
     CheckCircleSolid,
     CloseCircleSolid,
+    RefreshOutline,
   } from "flowbite-svelte-icons";
   import { LibrarySkeleton } from "$skeletons";
   import { BookItem } from "$components/library";
   import { open } from "@tauri-apps/plugin-dialog";
   import {
     libraryApi,
+    syncApi,
+    settingsApi,
+    applyTheme,
+    type ThemeMode,
     type BookWithDetails,
     type Book,
     type CollectionWithCount,
@@ -31,6 +37,8 @@
 
   let isLoading = $state(true);
   let isImporting = $state(false);
+  let isSyncing = $state(false);
+  let syncStatusText = $state("");
   let search = $state("");
   let books = $state<BookWithDetails[]>([]);
   let collections = $state<CollectionWithCount[]>([]);
@@ -201,8 +209,53 @@
     }
   }
 
+  async function loadSyncStatus() {
+    try {
+      const status = await syncApi.getSyncStatus();
+      syncStatusText = syncApi.formatSyncStatus(status);
+    } catch (error) {
+      console.error("Failed to load sync status:", error);
+      syncStatusText = "";
+    }
+  }
+
+  async function handleSync() {
+    isSyncing = true;
+    syncStatusText = "Syncing...";
+    try {
+      const result = await syncApi.syncNow();
+      if (result.success) {
+        syncStatusText = `Synced: ${result.books_uploaded}↑ ${result.books_downloaded}↓`;
+        // Reload books in case any were synced
+        await loadBooks();
+        // Reload settings and reapply theme in case it changed
+        try {
+          const settings = await settingsApi.getSettings();
+          const theme = (settings.categories
+            .find((c) => c.id === "appearance")
+            ?.settings.find((s) => s.key === "appearance.theme")
+            ?.value || "system") as ThemeMode;
+          applyTheme(theme);
+        } catch (e) {
+          console.error("Failed to reload theme after sync:", e);
+        }
+      } else {
+        syncStatusText = `Sync had errors: ${result.errors.join(", ")}`;
+        showError(result.errors.join("\n"));
+      }
+    } catch (error) {
+      console.error("Sync failed:", error);
+      syncStatusText = "Sync failed";
+      showError(parseError(error));
+    } finally {
+      isSyncing = false;
+      // Reload sync status after a delay
+      setTimeout(loadSyncStatus, 2000);
+    }
+  }
+
   onMount(async () => {
-    await Promise.all([loadBooks(), loadCollections()]);
+    await Promise.all([loadBooks(), loadCollections(), loadSyncStatus()]);
     isLoading = false;
   });
 </script>
@@ -211,12 +264,33 @@
   <LibrarySkeleton />
 {:else}
   <div class="page-container p-4">
-    <Search
-      clearable
-      class="mb-6"
-      bind:value={search}
-      placeholder="Search books and collections..."
-    ></Search>
+    <!-- Search and Sync Row -->
+    <div class="mb-6 flex items-center gap-3">
+      <Search
+        clearable
+        class="flex-1"
+        bind:value={search}
+        placeholder="Search books and collections..."
+      ></Search>
+      
+      <Button
+        id="sync-btn"
+        onclick={handleSync}
+        disabled={isSyncing}
+        color="alternative"
+        class="shrink-0"
+      >
+        {#if isSyncing}
+          <Spinner size="4" class="mr-2" />
+        {:else}
+          <RefreshOutline class="w-4 h-4 mr-2" />
+        {/if}
+        Sync
+      </Button>
+      <Tooltip triggeredBy="#sync-btn" placement="bottom">
+        {syncStatusText || "Sync with Google Drive"}
+      </Tooltip>
+    </div>
 
     <div class="mb-4 flex items-center justify-between">
       <Heading tag="h5">Collections</Heading>

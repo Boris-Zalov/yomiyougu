@@ -14,9 +14,9 @@
     RefreshOutline 
   } from "flowbite-svelte-icons";
   
-  import { settingsApi, type SettingCategory, type SettingValue } from "$lib";
+  import { settingsApi, authApi, type SettingCategory, type SettingValue, type AuthStatus } from "$lib";
   import { applyTheme } from "$lib/utils/theme";
-  import { SettingCategory as SettingCategoryComponent } from "$components/settings";
+  import { SettingCategory as SettingCategoryComponent, SyncSettingsCategory } from "$components/settings";
   import { SettingsSkeleton } from "$skeletons";
 
   let categories = $state<SettingCategory[]>([]);
@@ -27,8 +27,13 @@
   let error = $state<string | null>(null);
   let showSaved = $state(false);
   let showReset = $state(false);
+  let authStatus = $state<AuthStatus>({ isAuthenticated: false });
 
   let hasChanges = $derived(pendingChanges.size > 0);
+  
+  // Separate sync category from other categories
+  let regularCategories = $derived(categories.filter(c => c.id !== 'sync'));
+  let syncCategory = $derived(categories.find(c => c.id === 'sync'));
   
   beforeNavigate(async ({ cancel, to }) => {
     if (!hasChanges) return;
@@ -54,12 +59,25 @@
     isLoading = true;
     error = null;
     try {
-      categories = await settingsApi.getSettingsSchema();
+      const [settingsResult, authResult] = await Promise.all([
+        settingsApi.getSettingsSchema(),
+        authApi.getAuthStatus(),
+      ]);
+      categories = settingsResult;
+      authStatus = authResult;
     } catch (err) {
       console.error("Failed to load settings:", err);
       error = typeof err === "string" ? err : "Failed to load settings";
     } finally {
       isLoading = false;
+    }
+  }
+
+  async function refreshAuthStatus() {
+    try {
+      authStatus = await authApi.getAuthStatus();
+    } catch (err) {
+      console.error("Failed to refresh auth status:", err);
     }
   }
 
@@ -112,7 +130,7 @@
   async function resetAll() {
     const confirmed = await confirm("Reset all settings to defaults?");
     if (!confirmed) return;
-    
+      
     isLoading = true;
     error = null;
     try {
@@ -162,9 +180,18 @@
     <SettingsSkeleton />
   {:else}
     <div class="space-y-6 w-full">
-      {#each categories as category (category.id)}
+      {#each regularCategories as category (category.id)}
         <SettingCategoryComponent {category} onchange={handleChange} />
       {/each}
+
+      {#if syncCategory}
+        <SyncSettingsCategory 
+          category={syncCategory} 
+          {authStatus}
+          onchange={handleChange}
+          onAuthChange={refreshAuthStatus}
+        />
+      {/if}
 
       <div>
         <Button color="alternative" size="sm" onclick={resetAll}>

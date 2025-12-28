@@ -17,6 +17,11 @@ mod database_tests {
 
     type TestPool = Pool<ConnectionManager<SqliteConnection>>;
 
+    /// Generate a test UUID
+    fn test_uuid() -> Option<String> {
+        Some(uuid::Uuid::new_v4().to_string())
+    }
+
     /// Create a fresh in-memory database with migrations applied
     fn setup_test_db() -> TestPool {
         let manager = ConnectionManager::<SqliteConnection>::new(":memory:");
@@ -45,6 +50,7 @@ mod database_tests {
             let mut conn = pool.get().unwrap();
 
             let new_collection = NewCollection {
+                uuid: test_uuid(),
                 name: "Manga".to_string(),
                 description: Some("Japanese comics".to_string()),
             };
@@ -67,11 +73,13 @@ mod database_tests {
             let mut conn = pool.get().unwrap();
 
             let collection1 = NewCollection {
+                uuid: test_uuid(),
                 name: "Manga".to_string(),
                 description: None,
             };
 
             let collection2 = NewCollection {
+                uuid: test_uuid(),
                 name: "Manga".to_string(), // Same name
                 description: Some("Duplicate".to_string()),
             };
@@ -97,6 +105,7 @@ mod database_tests {
 
             // Create collection
             let new_collection = NewCollection {
+                uuid: test_uuid(),
                 name: "Old Name".to_string(),
                 description: None,
             };
@@ -135,6 +144,7 @@ mod database_tests {
             let mut conn = pool.get().unwrap();
 
             let new_collection = NewCollection {
+                uuid: test_uuid(),
                 name: "To Delete".to_string(),
                 description: None,
             };
@@ -165,6 +175,7 @@ mod database_tests {
             // Create multiple collections
             for i in 1..=3 {
                 let new_collection = NewCollection {
+                    uuid: test_uuid(),
                     name: format!("Collection {}", i),
                     description: None,
                 };
@@ -194,6 +205,7 @@ mod database_tests {
 
         fn create_test_book(conn: &mut SqliteConnection, title: &str) -> Book {
             let new_book = NewBook {
+                uuid: test_uuid(),
                 file_path: format!("/path/to/{}.cbz", title.to_lowercase().replace(' ', "_")),
                 filename: format!("{}.cbz", title),
                 file_size: Some(1024000),
@@ -229,6 +241,7 @@ mod database_tests {
             let mut conn = pool.get().unwrap();
 
             let book1 = NewBook {
+                uuid: test_uuid(),
                 file_path: "/path/to/manga.cbz".to_string(),
                 filename: "manga.cbz".to_string(),
                 file_size: None,
@@ -238,6 +251,7 @@ mod database_tests {
             };
 
             let book2 = NewBook {
+                uuid: test_uuid(),
                 file_path: "/path/to/manga.cbz".to_string(), // Same path
                 filename: "manga.cbz".to_string(),
                 file_size: None,
@@ -344,6 +358,7 @@ mod database_tests {
             // Create collection
             let collection: Collection = diesel::insert_into(collections::table)
                 .values(&NewCollection {
+                    uuid: test_uuid(),
                     name: "Shonen".to_string(),
                     description: None,
                 })
@@ -353,6 +368,7 @@ mod database_tests {
 
             // Create book
             let new_book = NewBook {
+                uuid: test_uuid(),
                 file_path: "/manga/naruto.cbz".to_string(),
                 filename: "naruto.cbz".to_string(),
                 file_size: None,
@@ -370,6 +386,7 @@ mod database_tests {
             // Add book to collection via junction table
             diesel::insert_into(book_collections::table)
                 .values(&NewBookCollection {
+                    uuid: test_uuid(),
                     book_id: book.id,
                     collection_id: collection.id,
                 })
@@ -395,6 +412,7 @@ mod database_tests {
             // Create collection
             let collection: Collection = diesel::insert_into(collections::table)
                 .values(&NewCollection {
+                    uuid: test_uuid(),
                     name: "To Delete".to_string(),
                     description: None,
                 })
@@ -405,6 +423,7 @@ mod database_tests {
             // Create book
             let book: Book = diesel::insert_into(books::table)
                 .values(&NewBook {
+                    uuid: test_uuid(),
                     file_path: "/manga/test.cbz".to_string(),
                     filename: "test.cbz".to_string(),
                     file_size: None,
@@ -419,6 +438,7 @@ mod database_tests {
             // Add book to collection via junction table
             diesel::insert_into(book_collections::table)
                 .values(&NewBookCollection {
+                    uuid: test_uuid(),
                     book_id: book.id,
                     collection_id: collection.id,
                 })
@@ -439,7 +459,10 @@ mod database_tests {
 
             // Book should still exist
             let book_exists: bool = books::table.find(book.id).first::<Book>(&mut conn).is_ok();
-            assert!(book_exists, "Book should still exist after collection deletion");
+            assert!(
+                book_exists,
+                "Book should still exist after collection deletion"
+            );
 
             // Junction entry should be deleted (CASCADE)
             let remaining: i64 = book_collections::table
@@ -465,6 +488,7 @@ mod database_tests {
                 .enumerate()
             {
                 let book = NewBook {
+                    uuid: test_uuid(),
                     file_path: format!("/manga/book{}.cbz", i),
                     filename: format!("book{}.cbz", i),
                     file_size: None,
@@ -503,6 +527,7 @@ mod database_tests {
 
         fn create_test_book(conn: &mut SqliteConnection) -> Book {
             let new_book = NewBook {
+                uuid: test_uuid(),
                 file_path: "/path/to/test.cbz".to_string(),
                 filename: "test.cbz".to_string(),
                 file_size: None,
@@ -526,6 +551,7 @@ mod database_tests {
             let book = create_test_book(&mut conn);
 
             let new_bookmark = NewBookmark {
+                uuid: test_uuid(),
                 book_id: book.id,
                 name: "Cool Scene".to_string(),
                 description: Some("The hero's entrance".to_string()),
@@ -553,6 +579,7 @@ mod database_tests {
             for i in 1..=5 {
                 diesel::insert_into(bookmarks::table)
                     .values(&NewBookmark {
+                        uuid: test_uuid(),
                         book_id: book.id,
                         name: format!("Bookmark {}", i),
                         description: None,
@@ -583,6 +610,7 @@ mod database_tests {
             // Add bookmarks
             diesel::insert_into(bookmarks::table)
                 .values(&NewBookmark {
+                    uuid: test_uuid(),
                     book_id: book.id,
                     name: "Bookmark".to_string(),
                     description: None,
@@ -620,6 +648,7 @@ mod database_tests {
 
         fn create_test_book(conn: &mut SqliteConnection) -> Book {
             let new_book = NewBook {
+                uuid: test_uuid(),
                 file_path: "/path/to/settings_test.cbz".to_string(),
                 filename: "settings_test.cbz".to_string(),
                 file_size: None,
@@ -643,6 +672,7 @@ mod database_tests {
             let book = create_test_book(&mut conn);
 
             let new_settings = NewBookSettings {
+                uuid: test_uuid(),
                 book_id: book.id,
                 reading_direction: Some("rtl".to_string()),
                 page_display_mode: Some("double".to_string()),
@@ -672,6 +702,7 @@ mod database_tests {
             let book = create_test_book(&mut conn);
 
             let settings1 = NewBookSettings {
+                uuid: test_uuid(),
                 book_id: book.id,
                 reading_direction: Some("ltr".to_string()),
                 page_display_mode: None,
@@ -686,6 +717,7 @@ mod database_tests {
                 .expect("First settings should succeed");
 
             let settings2 = NewBookSettings {
+                uuid: test_uuid(),
                 book_id: book.id, // Same book
                 reading_direction: Some("rtl".to_string()),
                 page_display_mode: None,
@@ -710,6 +742,7 @@ mod database_tests {
 
             diesel::insert_into(book_settings::table)
                 .values(&NewBookSettings {
+                    uuid: test_uuid(),
                     book_id: book.id,
                     reading_direction: Some("rtl".to_string()),
                     page_display_mode: None,
@@ -753,6 +786,7 @@ mod database_tests {
 
             let settings: BookSettings = diesel::insert_into(book_settings::table)
                 .values(&NewBookSettings {
+                    uuid: test_uuid(),
                     book_id: book.id,
                     reading_direction: Some("ltr".to_string()),
                     page_display_mode: None,
@@ -803,6 +837,7 @@ mod database_tests {
             for i in 0..3 {
                 let book: Book = diesel::insert_into(books::table)
                     .values(&NewBook {
+                        uuid: test_uuid(),
                         file_path: format!("/manga/book{}.cbz", i),
                         filename: format!("book{}.cbz", i),
                         file_size: None,
@@ -840,6 +875,7 @@ mod database_tests {
 
             let collection: Collection = diesel::insert_into(collections::table)
                 .values(&NewCollection {
+                    uuid: test_uuid(),
                     name: "Test Collection".to_string(),
                     description: None,
                 })
@@ -851,6 +887,7 @@ mod database_tests {
             for i in 0..5 {
                 let book: Book = diesel::insert_into(books::table)
                     .values(&NewBook {
+                        uuid: test_uuid(),
                         file_path: format!("/manga/coll_book{}.cbz", i),
                         filename: format!("coll_book{}.cbz", i),
                         file_size: None,
@@ -864,6 +901,7 @@ mod database_tests {
 
                 diesel::insert_into(book_collections::table)
                     .values(&NewBookCollection {
+                        uuid: test_uuid(),
                         book_id: book.id,
                         collection_id: collection.id,
                     })
@@ -890,6 +928,7 @@ mod database_tests {
             for (i, title) in titles.iter().enumerate() {
                 diesel::insert_into(books::table)
                     .values(&NewBook {
+                        uuid: test_uuid(),
                         file_path: format!("/manga/search{}.cbz", i),
                         filename: format!("search{}.cbz", i),
                         file_size: None,
@@ -917,6 +956,7 @@ mod database_tests {
             for i in 0..5 {
                 let book: Book = diesel::insert_into(books::table)
                     .values(&NewBook {
+                        uuid: test_uuid(),
                         file_path: format!("/manga/fav{}.cbz", i),
                         filename: format!("fav{}.cbz", i),
                         file_size: None,

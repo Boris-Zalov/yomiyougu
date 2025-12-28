@@ -1,27 +1,29 @@
 //! yomiyougu - A cross-platform manga/comic reader
 //!
 //! ## Module Structure
+//! - `auth/` - Google OAuth token management
 //! - `commands/` - Tauri commands exposed to frontend
 //! - `database/` - Diesel ORM models and connection management
 //! - `settings/` - Configuration management with UI schema generation
+//! - `sync/` - Google Drive synchronization
 //! - `error` - Application-wide error types
 //! - `schema` - Auto-generated Diesel schema
 
+pub mod auth;
 mod commands;
 mod database;
 mod error;
 mod schema;
 mod settings;
+mod sync;
 
 pub use database::{establish_connection, DbPool};
 pub use error::AppError;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Initialize logger
-    env_logger::Builder::from_default_env()
-        .filter_level(log::LevelFilter::Info)
-        .init();
+    // Initialize logger - respect RUST_LOG env var, default to Info
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
     log::info!("Starting yomiyougu application");
 
@@ -33,9 +35,18 @@ pub fn run() {
         .setup(|app| {
             database::connection::init_pool(app.handle())?;
             log::info!("Database connection pool initialized");
+            log::info!("Stronghold secure storage available for credential management");
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            // Auth commands
+            commands::get_auth_status,
+            commands::google_sign_in,
+            commands::refresh_google_token,
+            commands::google_logout,
+            commands::set_auth_token,
+            commands::save_google_auth_token,
+            // Settings commands
             commands::check_settings_exists,
             commands::get_settings,
             commands::get_settings_schema,
@@ -61,6 +72,9 @@ pub fn run() {
             commands::set_book_collections,
             commands::add_book_to_collection,
             commands::remove_book_from_collection,
+            // Sync commands
+            commands::get_sync_status,
+            commands::sync_now,
         ])
         .run(tauri::generate_context!())
         .expect("Critical error while running tauri application");
