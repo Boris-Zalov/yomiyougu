@@ -32,12 +32,12 @@
   }
 </script>
 
-<div class="space-y-0 relative">
-  <Button color="alternative" class="w-full justify-between">
+<div class="inline-block relative">
+  <Button color="alternative" class="justify-between dropdown-trigger">
     {currentLabel}
     <ChevronDownOutline class="ms-2 h-4 w-4" />
   </Button>
-  <Dropdown class="list-none" placement="bottom" strategy="absolute">
+  <Dropdown class="list-none" triggeredBy=".dropdown-trigger" placement="bottom-start">
     {#each options as option (option.value)}
       <DropdownItem class="list-none">
         <Radio
