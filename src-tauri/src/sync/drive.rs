@@ -197,6 +197,40 @@ impl DriveSync {
         Ok(file_id)
     }
 
+    /// Delete a book file from Google Drive by its hash
+    pub async fn delete_book_file(&self, file_hash: &str) -> Result<bool, AppError> {
+        let file_id = match self.find_book_file(file_hash).await? {
+            Some(id) => id,
+            None => {
+                log::info!("Book file {} not found in Drive, nothing to delete", file_hash);
+                return Ok(false);
+            }
+        };
+
+        log::info!("Deleting book file {} (Drive ID: {})...", file_hash, file_id);
+
+        let client = reqwest::Client::new();
+        
+        let response = client
+            .delete(format!("{}/files/{}", DRIVE_API_BASE, file_id))
+            .bearer_auth(&self.access_token)
+            .send()
+            .await
+            .map_err(|e| AppError::sync_failed(format!("Failed to delete book file: {}", e)))?;
+
+        if response.status().is_success() || response.status().as_u16() == 204 {
+            log::info!("Successfully deleted book file {} from Drive", file_hash);
+            Ok(true)
+        } else {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            Err(AppError::sync_failed(format!(
+                "Drive delete error {}: {}",
+                status, body
+            )))
+        }
+    }
+
     /// Find a comic book file in appData folder by its hash
     pub async fn find_book_file(&self, file_hash: &str) -> Result<Option<String>, AppError> {
         let client = reqwest::Client::new();

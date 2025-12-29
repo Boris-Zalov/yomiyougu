@@ -33,6 +33,7 @@
             <a
                 href={item.href}
                 class={itemClass}
+                data-sveltekit-preload-code="eager"
                 onclick={(e) => {
                     e.preventDefault();
                     goto(item.href);

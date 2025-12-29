@@ -2,15 +2,30 @@
   import "../app.css";
   import { platform } from "@tauri-apps/plugin-os";
   import { fade } from "svelte/transition";
-  import { page } from "$app/state";
+  import { page, navigating } from "$app/state";
 
   import { settingsApi, applyTheme, type ThemeMode } from "$lib";
   import SplashScreen from "$components/SplashScreen.svelte";
   import SetupWizard from "$components/SetupWizard.svelte";
   import DesktopNavigation from "$components/DesktopNavigation.svelte";
   import MobileNavigation from "$components/MobileNavigation.svelte";
+  import { LibrarySkeleton, DashboardSkeleton, SettingsSkeleton } from "$components/skeletons";
 
   let { children } = $props();
+
+  // Determine which skeleton to show during navigation
+  let targetPath = $derived(navigating?.to?.url.pathname);
+  let isNavigating = $derived(!!navigating);
+
+  function getSkeletonForPath(path: string | undefined) {
+    if (!path) return null;
+    if (path.startsWith('/library')) return 'library';
+    if (path.startsWith('/dashboard') || path === '/') return 'dashboard';
+    if (path.startsWith('/settings')) return 'settings';
+    return null;
+  }
+
+  let skeletonType = $derived(getSkeletonForPath(targetPath));
 
   const currentPlatform = platform();
   const isMobile = currentPlatform === "android" || currentPlatform === "ios";
@@ -71,13 +86,33 @@
   <div class="h-screen w-screen flex flex-col overflow-hidden" transition:fade>
     {#if isMobile}
       <main class="flex-1 overflow-y-auto overscroll-contain pt-7 pb-26 relative isolate">
-        {@render children()}
+        {#if isNavigating && skeletonType}
+          {#if skeletonType === 'library'}
+            <LibrarySkeleton />
+          {:else if skeletonType === 'dashboard'}
+            <DashboardSkeleton />
+          {:else if skeletonType === 'settings'}
+            <SettingsSkeleton />
+          {/if}
+        {:else}
+          {@render children()}
+        {/if}
       </main>
       <MobileNavigation />
     {:else}
       <DesktopNavigation {activePath} />
       <main class="flex-1 overflow-y-auto relative isolate">
-        {@render children()}
+        {#if isNavigating && skeletonType}
+          {#if skeletonType === 'library'}
+            <LibrarySkeleton />
+          {:else if skeletonType === 'dashboard'}
+            <DashboardSkeleton />
+          {:else if skeletonType === 'settings'}
+            <SettingsSkeleton />
+          {/if}
+        {:else}
+          {@render children()}
+        {/if}
       </main>
     {/if}
   </div>

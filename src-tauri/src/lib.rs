@@ -29,6 +29,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_opener::init())
@@ -46,6 +47,8 @@ pub fn run() {
             commands::google_logout,
             commands::set_auth_token,
             commands::save_google_auth_token,
+            // Device commands
+            commands::get_or_create_device_id,
             // Settings commands
             commands::check_settings_exists,
             commands::get_settings,
@@ -72,9 +75,6 @@ pub fn run() {
             commands::set_book_collections,
             commands::add_book_to_collection,
             commands::remove_book_from_collection,
-            // Library commands - book settings
-            commands::get_book_settings,
-            commands::update_book_settings,
             // Sync commands
             commands::get_sync_status,
             commands::sync_now,

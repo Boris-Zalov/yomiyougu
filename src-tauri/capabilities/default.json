@@ -18,6 +18,7 @@
     "fs:allow-appcache-read",
     "fs:allow-appcache-write",
     "fs:allow-appdata-read",
-    "fs:allow-appdata-write"
+    "fs:allow-appdata-write",
+    "store:default"
   ]
 }
