@@ -3,6 +3,7 @@
 use tauri::AppHandle;
 
 use crate::auth;
+use crate::commands::device::get_device_id;
 use crate::error::AppError;
 use crate::settings::{load_settings, SettingValue};
 use crate::sync::{DriveSync, MergeEngine, SyncOptions, SyncResult, SyncStatus, ConflictStrategy};
@@ -105,7 +106,7 @@ async fn sync_now_impl(app: &AppHandle) -> Result<SyncResult, AppError> {
     
     // Merge local and remote
     log::info!("Merging local and remote data...");
-    let device_id = get_device_id();
+    let device_id = get_device_id(app).unwrap_or_else(|| format!("device-{}", uuid::Uuid::new_v4()));
     let engine = MergeEngine::new(device_id, ConflictStrategy::default(), sync_options.clone());
     let (updated_snapshot, mut result) = engine.sync(app, remote_snapshot)?;
     
@@ -198,10 +199,4 @@ async fn sync_book_files(
     // Books synced from other devices will have cloud://{uuid} paths until downloaded
     
     Ok(())
-}
-
-fn get_device_id() -> String {
-    std::env::var("DEVICE_ID").unwrap_or_else(|_| {
-        format!("device-{}", uuid::Uuid::new_v4())
-    })
 }

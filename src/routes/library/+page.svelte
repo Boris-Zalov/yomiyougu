@@ -41,7 +41,7 @@
     type Book,
     type CollectionWithCount,
   } from "$lib";
-  import Fuse from "fuse.js";
+  import type Fuse from "fuse.js";
 
   let isLoading = $state(true);
   let isImporting = $state(false);
@@ -156,26 +156,53 @@
     },
   };
 
-  let collectionsFuse = $derived(
-    new Fuse(collections, {
-      ...fuseOptions,
-      keys: ["name", "description"],
-    }),
-  );
+  let FuseClass: typeof Fuse | null = null;
+  let fuseLoadPromise: Promise<typeof Fuse> | null = null;
 
-  let booksFuse = $derived(
-    new Fuse(books, {
-      ...fuseOptions,
-      keys: ["title", "filename"],
-    }),
-  );
+  async function loadFuse(): Promise<typeof Fuse> {
+    if (FuseClass) return FuseClass;
+    if (!fuseLoadPromise) {
+      fuseLoadPromise = import("fuse.js").then((m) => {
+        FuseClass = m.default;
+        return FuseClass;
+      });
+    }
+    return fuseLoadPromise;
+  }
+
+  let collectionsFuseCache: { data: CollectionWithCount[]; fuse: Fuse<CollectionWithCount> } | null = null;
+  let booksFuseCache: { data: BookWithDetails[]; fuse: Fuse<BookWithDetails> } | null = null;
+
+  function getCollectionsFuse(): Fuse<CollectionWithCount> | null {
+    if (!FuseClass) return null;
+    if (!collectionsFuseCache || collectionsFuseCache.data !== collections) {
+      collectionsFuseCache = {
+        data: collections,
+        fuse: new FuseClass(collections, { ...fuseOptions, keys: ["name", "description"] }),
+      };
+    }
+    return collectionsFuseCache.fuse;
+  }
+
+  function getBooksFuse(): Fuse<BookWithDetails> | null {
+    if (!FuseClass) return null;
+    if (!booksFuseCache || booksFuseCache.data !== books) {
+      booksFuseCache = {
+        data: books,
+        fuse: new FuseClass(books, { ...fuseOptions, keys: ["title", "filename"] }),
+      };
+    }
+    return booksFuseCache.fuse;
+  }
 
   let filteredCollections = $derived.by(() => {
     const query = stripPunctuation(search.trim());
     if (!query) {
       return sortCollections(collections);
     }
-    return sortCollections(collectionsFuse.search(query).map((result) => result.item));
+    const fuse = getCollectionsFuse();
+    if (!fuse) return sortCollections(collections);
+    return sortCollections(fuse.search(query).map((result) => result.item));
   });
 
   let filteredBooks = $derived.by(() => {
@@ -183,7 +210,15 @@
     if (!query) {
       return sortBooks(books);
     }
-    return sortBooks(booksFuse.search(query).map((result) => result.item));
+    const fuse = getBooksFuse();
+    if (!fuse) return sortBooks(books);
+    return sortBooks(fuse.search(query).map((result) => result.item));
+  });
+
+  $effect(() => {
+    if (search.trim() && !FuseClass) {
+      loadFuse();
+    }
   });
 
   let showResultModal = $state(false);
@@ -607,6 +642,7 @@
   {/if}
 
   <!-- Create Collection Modal -->
+  {#if showCollectionModal}
   <Modal bind:open={showCollectionModal} size="md" class="w-full">
     <form
       onsubmit={(e) => {
@@ -673,8 +709,10 @@
       </div>
     </form>
   </Modal>
+  {/if}
 
   <!-- Import Success Modal -->
+  {#if showResultModal}
   <Modal bind:open={showResultModal} size="md" autoclose>
     <div class="text-center">
       <CheckCircleSolid
@@ -692,8 +730,10 @@
       <Button color="red" class="w-full">Close</Button>
     </div>
   </Modal>
+  {/if}
 
   <!-- Error Modal -->
+  {#if showErrorModal}
   <Modal bind:open={showErrorModal} size="md" autoclose>
     <div class="text-center">
       <CloseCircleSolid
@@ -708,8 +748,10 @@
       <Button color="red" class="w-full">Close</Button>
     </div>
   </Modal>
+  {/if}
 
   <!-- Delete Book Confirmation Modal -->
+  {#if showDeleteBookModal}
   <Modal bind:open={showDeleteBookModal} size="md">
     <div class="text-center">
       <TrashBinOutline
@@ -746,8 +788,10 @@
       </div>
     </div>
   </Modal>
+  {/if}
 
   <!-- Delete Collection Confirmation Modal -->
+  {#if showDeleteCollectionModal}
   <Modal bind:open={showDeleteCollectionModal} size="md">
     <div class="text-center">
       <TrashBinOutline
@@ -784,4 +828,5 @@
       </div>
     </div>
   </Modal>
+  {/if}
 {/if}
