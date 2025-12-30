@@ -13,7 +13,7 @@ use zip::ZipArchive;
 use crate::database::connection::establish_connection;
 use crate::database::models::*;
 use crate::error::{AppError, ErrorCode};
-use crate::schema::{book_collections, book_settings, books, collections};
+use crate::schema::{book_collections, book_settings, bookmarks, books, collections};
 
 // ============================================================================
 // COLLECTIONS
@@ -1129,4 +1129,124 @@ pub fn update_book_settings(
                 format!("Failed to retrieve book settings: {}", e),
             )
         })
+}
+
+// ============================================================================
+// BOOKMARKS
+// ============================================================================
+
+/// Create a new bookmark
+pub fn create_bookmark(new_bookmark: NewBookmark) -> Result<Bookmark, AppError> {
+    info!(
+        "Creating bookmark '{}' for book {} at page {}",
+        new_bookmark.name, new_bookmark.book_id, new_bookmark.page
+    );
+    let mut conn = establish_connection()?;
+
+    diesel::insert_into(bookmarks::table)
+        .values(&new_bookmark)
+        .returning(Bookmark::as_returning())
+        .get_result(&mut conn)
+        .map(|bookmark: Bookmark| {
+            info!(
+                "Bookmark created: {} (ID: {})",
+                bookmark.name, bookmark.id
+            );
+            bookmark
+        })
+        .map_err(|e| {
+            error!("Failed to create bookmark: {}", e);
+            AppError::new(
+                ErrorCode::DatabaseQueryFailed,
+                format!("Failed to create bookmark: {}", e),
+            )
+        })
+}
+
+/// Get all bookmarks for a book (excludes soft-deleted)
+pub fn get_bookmarks_for_book(book_id: i32) -> Result<Vec<Bookmark>, AppError> {
+    debug!("Fetching bookmarks for book {}", book_id);
+    let mut conn = establish_connection()?;
+
+    bookmarks::table
+        .filter(bookmarks::book_id.eq(book_id))
+        .filter(bookmarks::deleted_at.is_null())
+        .order(bookmarks::page.asc())
+        .select(Bookmark::as_select())
+        .load(&mut conn)
+        .map_err(|e| {
+            AppError::new(
+                ErrorCode::DatabaseQueryFailed,
+                format!("Failed to load bookmarks: {}", e),
+            )
+        })
+}
+
+/// Get a single bookmark by ID
+pub fn get_bookmark_by_id(bookmark_id: i32) -> Result<Bookmark, AppError> {
+    let mut conn = establish_connection()?;
+
+    bookmarks::table
+        .find(bookmark_id)
+        .filter(bookmarks::deleted_at.is_null())
+        .select(Bookmark::as_select())
+        .first(&mut conn)
+        .map_err(|e| {
+            AppError::new(
+                ErrorCode::DatabaseQueryFailed,
+                format!("Failed to find bookmark: {}", e),
+            )
+        })
+}
+
+/// Update a bookmark
+pub fn update_bookmark(
+    bookmark_id: i32,
+    name: String,
+    description: Option<String>,
+) -> Result<Bookmark, AppError> {
+    info!("Updating bookmark {}", bookmark_id);
+    let mut conn = establish_connection()?;
+
+    let now = chrono::Utc::now().naive_utc();
+    diesel::update(bookmarks::table.find(bookmark_id))
+        .set((
+            bookmarks::name.eq(&name),
+            bookmarks::description.eq(&description),
+            bookmarks::updated_at.eq(Some(now)),
+        ))
+        .execute(&mut conn)
+        .map_err(|e| {
+            error!("Failed to update bookmark {}: {}", bookmark_id, e);
+            AppError::new(
+                ErrorCode::DatabaseQueryFailed,
+                format!("Failed to update bookmark: {}", e),
+            )
+        })?;
+
+    get_bookmark_by_id(bookmark_id)
+}
+
+/// Delete a bookmark (soft-delete)
+pub fn delete_bookmark(bookmark_id: i32) -> Result<(), AppError> {
+    info!("Deleting bookmark {}", bookmark_id);
+    let mut conn = establish_connection()?;
+
+    let now = chrono::Utc::now().naive_utc();
+    diesel::update(bookmarks::table.find(bookmark_id))
+        .set((
+            bookmarks::deleted_at.eq(Some(now)),
+            bookmarks::updated_at.eq(Some(now)),
+        ))
+        .execute(&mut conn)
+        .map_err(|e| {
+            error!("Failed to delete bookmark {}: {}", bookmark_id, e);
+            AppError::new(
+                ErrorCode::DatabaseQueryFailed,
+                format!("Failed to delete bookmark: {}", e),
+            )
+        })?;
+
+    info!("Bookmark {} deleted successfully", bookmark_id);
+    Ok(())
 }
