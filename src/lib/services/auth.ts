@@ -14,9 +14,24 @@ const GOOGLE_OAUTH_SCOPE = import.meta.env.VITE_GOOGLE_OAUTH_SCOPE;
 
 /**
  * Get the current authentication status from backend
+ * If the token needs refreshing, this will automatically try to refresh it
  */
 export async function getAuthStatus(): Promise<AuthStatus> {
-  return invoke<AuthStatus>("get_auth_status");
+  const status = await invoke<AuthStatus>("get_auth_status");
+  
+  // If authenticated but needs refresh, try to refresh automatically
+  if (status.isAuthenticated && status.needsRefresh) {
+    console.log("Token needs refresh, attempting automatic refresh...");
+    try {
+      return await refreshToken();
+    } catch (e) {
+      console.error("Failed to auto-refresh token:", e);
+      // Return the original status - user is still "authenticated" with refresh token
+      return status;
+    }
+  }
+  
+  return status;
 }
 
 /**
