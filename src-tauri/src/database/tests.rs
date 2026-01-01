@@ -230,7 +230,7 @@ mod database_tests {
             let book = create_test_book(&mut conn, "Test Manga");
 
             assert_eq!(book.title, "Test Manga");
-            assert_eq!(book.current_page, 1); // Default
+            assert_eq!(book.current_page, 0); // 0-indexed pages
             assert_eq!(book.total_pages, 100);
             assert!(!book.is_favorite); // Default false
             assert_eq!(book.reading_status, "unread"); // Default
