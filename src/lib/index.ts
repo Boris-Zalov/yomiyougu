@@ -11,3 +11,4 @@ export * as syncApi from "./services/sync";
 
 // Utils
 export * from "./utils/theme";
+export * from "./utils/platform";

@@ -1,5 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { goto } from "$app/navigation";
+  import { platform } from "@tauri-apps/plugin-os";
   import {
     Heading,
     Button,
@@ -27,6 +29,8 @@
     ArrowUpOutline,
     ArrowDownOutline,
     ArrowSortLettersOutline,
+    DownloadOutline,
+    ExclamationCircleOutline,
   } from "flowbite-svelte-icons";
   import { LibrarySkeleton } from "$skeletons";
   import { BookItem, CollectionItem } from "$components/library";
@@ -36,12 +40,16 @@
     syncApi,
     settingsApi,
     applyTheme,
+    isRarFormat,
     type ThemeMode,
     type BookWithDetails,
     type Book,
     type CollectionWithCount,
   } from "$lib";
   import type Fuse from "fuse.js";
+
+  const currentPlatform = platform();
+  const isAndroid = currentPlatform === "android";
 
   let isLoading = $state(true);
   let isImporting = $state(false);
@@ -50,6 +58,11 @@
   let search = $state("");
   let books = $state<BookWithDetails[]>([]);
   let collections = $state<CollectionWithCount[]>([]);
+
+  // Book open state
+  let showCloudDownloadModal = $state(false);
+  let showUnsupportedFormatModal = $state(false);
+  let pendingBook = $state<BookWithDetails | null>(null);
 
   // Sorting state
   type SortField = "name" | "date_added" | "book_count";
@@ -369,6 +382,54 @@
     showDeleteBookModal = true;
   }
 
+  // Check if a book can be opened and navigate to reader
+  function handleBookClick(book: BookWithDetails) {
+    const isCloudOnly = book.file_path.startsWith("cloud://");
+    const isRar = isRarFormat(book);
+    
+    // Check for unsupported format on Android (check filename for cloud books too)
+    if (isAndroid && isRar) {
+      pendingBook = book;
+      showUnsupportedFormatModal = true;
+      return;
+    }
+    
+    if (isCloudOnly) {
+      pendingBook = book;
+      showCloudDownloadModal = true;
+      return;
+    }
+    
+    goto(`/reader/${book.id}`);
+  }
+
+  let isDownloading = $state(false);
+  
+  async function handleDownloadConfirm() {
+    if (!pendingBook) return;
+    
+    isDownloading = true;
+    try {
+      const updatedBook = await syncApi.downloadCloudBook(pendingBook.id);
+      
+      // Update the book in our local list
+      books = books.map(b => b.id === updatedBook.id ? { ...b, file_path: updatedBook.file_path } : b);
+      
+      // Close modal and navigate to reader
+      showCloudDownloadModal = false;
+      const bookId = pendingBook.id;
+      pendingBook = null;
+      goto(`/reader/${bookId}`);
+    } catch (error) {
+      console.error("Failed to download book:", error);
+      showError(parseError(error));
+      showCloudDownloadModal = false;
+      pendingBook = null;
+    } finally {
+      isDownloading = false;
+    }
+  }
+
   // Delete a book
   async function handleDeleteBook() {
     if (!bookToDelete) return;
@@ -613,6 +674,7 @@
       {#each filteredBooks as book (book.id)}
         <BookItem 
           {book} 
+          onclick={() => handleBookClick(book)}
           ontogglefavorite={handleToggleFavorite}
           ondelete={confirmDeleteBook}
         />
@@ -826,6 +888,70 @@
           {/if}
         </Button>
       </div>
+    </div>
+  </Modal>
+  {/if}
+
+  <!-- Cloud Download Modal -->
+  {#if showCloudDownloadModal}
+  <Modal bind:open={showCloudDownloadModal} size="md">
+    <div class="text-center">
+      <DownloadOutline
+        class="mx-auto mb-4 w-12 h-12 text-blue-500 dark:text-blue-400"
+      />
+      <Heading tag="h3" class="mb-2 text-lg font-medium">
+        Download Required
+      </Heading>
+      <P size="sm" class="mb-5 text-gray-500 dark:text-gray-400">
+        "<strong>{pendingBook?.title}</strong>" is stored in the cloud. Would you like to download it to read?
+      </P>
+      <div class="flex gap-3">
+        <Button
+          color="alternative"
+          class="flex-1"
+          onclick={() => { showCloudDownloadModal = false; pendingBook = null; }}
+          disabled={isDownloading}
+        >
+          Cancel
+        </Button>
+        <Button
+          color="primary"
+          class="flex-1"
+          onclick={handleDownloadConfirm}
+          disabled={isDownloading}
+        >
+          {#if isDownloading}
+            <Spinner size="4" class="mr-2" />
+            Downloading...
+          {:else}
+            Download
+          {/if}
+        </Button>
+      </div>
+    </div>
+  </Modal>
+  {/if}
+
+  <!-- Unsupported Format Modal -->
+  {#if showUnsupportedFormatModal}
+  <Modal bind:open={showUnsupportedFormatModal} size="md">
+    <div class="text-center">
+      <ExclamationCircleOutline
+        class="mx-auto mb-4 w-12 h-12 text-red-500 dark:text-red-400"
+      />
+      <Heading tag="h3" class="mb-2 text-lg font-medium">
+        Unsupported Format
+      </Heading>
+      <P size="sm" class="mb-5 text-gray-500 dark:text-gray-400">
+        RAR/CBR files are not supported on Android. Please convert "<strong>{pendingBook?.title}</strong>" to ZIP/CBZ format to read it on this device.
+      </P>
+      <Button
+        color="alternative"
+        class="w-full"
+        onclick={() => { showUnsupportedFormatModal = false; pendingBook = null; }}
+      >
+        OK
+      </Button>
     </div>
   </Modal>
   {/if}

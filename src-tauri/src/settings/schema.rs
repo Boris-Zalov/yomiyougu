@@ -77,7 +77,7 @@ fn create_reading_category() -> SettingCategory {
                     options: vec![
                         SelectOption::with_description("single", "Single Page", "One page at a time"),
                         SelectOption::with_description("double", "Double Page", "Two pages side by side"),
-                        SelectOption::with_description("auto", "Auto", "Adjust based on screen size"),
+                        SelectOption::with_description("continuous", "Continuous", "Scroll through pages continuously"),
                     ],
                 },
                 SettingValue::String("single".to_string()),

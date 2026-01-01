@@ -4,6 +4,7 @@
 //! - `auth/` - Google OAuth token management
 //! - `commands/` - Tauri commands exposed to frontend
 //! - `database/` - Diesel ORM models and connection management
+//! - `protocol` - Custom comic:// protocol for serving images from archives
 //! - `settings/` - Configuration management with UI schema generation
 //! - `sync/` - Google Drive synchronization
 //! - `error` - Application-wide error types
@@ -13,6 +14,7 @@ pub mod auth;
 mod commands;
 mod database;
 mod error;
+mod protocol;
 mod schema;
 mod settings;
 mod sync;
@@ -33,6 +35,13 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_opener::init())
+        .register_asynchronous_uri_scheme_protocol("comic", |_ctx, request, responder| {
+            // Handle comic:// protocol requests in a separate thread
+            std::thread::spawn(move || {
+                let response = protocol::handle_comic_protocol(request);
+                responder.respond(response);
+            });
+        })
         .setup(|app| {
             database::connection::init_pool(app.handle())?;
             log::info!("Database connection pool initialized");
@@ -75,9 +84,18 @@ pub fn run() {
             commands::set_book_collections,
             commands::add_book_to_collection,
             commands::remove_book_from_collection,
+            // Library commands - book settings
+            commands::get_book_settings,
+            commands::update_book_settings,
+            // Library commands - bookmarks
+            commands::create_bookmark,
+            commands::get_bookmarks,
+            commands::update_bookmark,
+            commands::delete_bookmark,
             // Sync commands
             commands::get_sync_status,
             commands::sync_now,
+            commands::download_cloud_book,
         ])
         .run(tauri::generate_context!())
         .expect("Critical error while running tauri application");

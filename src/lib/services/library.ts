@@ -8,6 +8,7 @@ import type {
   Book,
   BookWithDetails,
   BookSettings,
+  Bookmark,
   Collection,
   CollectionWithCount,
   ReadingStatus,
@@ -276,4 +277,54 @@ export async function updateBookSettings(
     imageFitMode: settings.imageFitMode !== undefined ? settings.imageFitMode : null,
     syncProgress: settings.syncProgress !== undefined ? settings.syncProgress : null,
   });
+}
+
+// ============================================================================
+// BOOKMARK COMMANDS
+// ============================================================================
+
+/**
+ * Create a new bookmark
+ */
+export async function createBookmark(
+  bookId: number,
+  name: string,
+  page: number,
+  description?: string
+): Promise<Bookmark> {
+  return invoke<Bookmark>("create_bookmark", {
+    bookId,
+    name,
+    description: description ?? null,
+    page,
+  });
+}
+
+/**
+ * Get all bookmarks for a book
+ */
+export async function getBookmarks(bookId: number): Promise<Bookmark[]> {
+  return invoke<Bookmark[]>("get_bookmarks", { bookId });
+}
+
+/**
+ * Update a bookmark
+ */
+export async function updateBookmark(
+  bookmarkId: number,
+  name: string,
+  description?: string
+): Promise<Bookmark> {
+  return invoke<Bookmark>("update_bookmark", {
+    bookmarkId,
+    name,
+    description: description ?? null,
+  });
+}
+
+/**
+ * Delete a bookmark
+ */
+export async function deleteBookmark(bookmarkId: number): Promise<void> {
+  return invoke<void>("delete_bookmark", { bookmarkId });
 }

@@ -9,6 +9,8 @@ node_modules
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 src-tauri/gen
+# Keep custom Android MainActivity
+!src-tauri/gen/android/app/src/main/java/com/yomiyougu/app/MainActivity.kt
 .vscode
 *.db
 vite-profile-0.cpuprofile

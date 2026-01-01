@@ -27,7 +27,7 @@
   let error = $state<string | null>(null);
   let showSaved = $state(false);
   let showReset = $state(false);
-  let authStatus = $state<AuthStatus>({ isAuthenticated: false });
+  let authStatus = $state<AuthStatus>({ isAuthenticated: false, needsRefresh: false });
 
   let hasChanges = $derived(pendingChanges.size > 0);
   

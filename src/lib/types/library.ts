@@ -42,6 +42,18 @@ export interface BookSettings {
 }
 
 /**
+ * Bookmark model for saving specific pages
+ */
+export interface Bookmark {
+	id: number;
+	book_id: number;
+	name: string;
+	description: string | null;
+	page: number;
+	created_at: string;
+}
+
+/**
  * Interface mirroring the Rust 'BookWithDetails' struct.
  * Note: Uses #[serde(flatten)] so book fields are at the top level
  */
@@ -88,13 +100,57 @@ export interface ImportResult {
 }
 
 /**
- * Temporary function for generating the cover image path.
- * TODO: Replace with actual cover extraction/caching logic
+ * Check if a book is in RAR/CBR format (unsupported on Android)
+ * Works for both local paths and cloud books (checks filename)
+ */
+export function isRarFormat(book: Book | BookWithDetails): boolean {
+	const filename = book.filename.toLowerCase();
+	return filename.endsWith('.rar') || filename.endsWith('.cbr');
+}
+
+/**
+ * Get the protocol URL prefix based on platform.
+ * On Android/Windows, custom protocols use http://<scheme>.localhost format.
+ * On macOS/Linux/iOS, they use <scheme>://localhost format.
+ */
+let cachedIsAndroid: boolean | null = null;
+
+export function setIsAndroid(value: boolean): void {
+	cachedIsAndroid = value;
+}
+
+export function getIsAndroid(): boolean {
+	return cachedIsAndroid === true;
+}
+
+function getComicProtocolPrefix(): string {
+	// On Android, use http://comic.localhost format
+	if (cachedIsAndroid === true) {
+		return 'http://comic.localhost';
+	}
+	// On desktop (macOS/Linux), use comic://localhost format
+	return 'comic://localhost';
+}
+
+/**
+ * Get the cover image path for a book.
+ * Uses the comic:// custom protocol to serve the first page as cover.
  * @param bookId - The ID of the book.
- * @returns The URL for the cover image.
+ * @returns The URL for the cover image via custom protocol.
  */
 export function getCoverPath(bookId: number): string {
-	return `/api/covers/${bookId}.jpg`;
+	return `${getComicProtocolPrefix()}/book/${bookId}/page/0`;
+}
+
+/**
+ * Get the image path for a specific page of a book.
+ * Uses the comic:// custom protocol to serve images from archives.
+ * @param bookId - The ID of the book.
+ * @param pageNumber - The page number (0-indexed).
+ * @returns The URL for the page image via custom protocol.
+ */
+export function getPagePath(bookId: number, pageNumber: number): string {
+	return `${getComicProtocolPrefix()}/book/${bookId}/page/${pageNumber}`;
 }
 
 /**

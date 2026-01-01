@@ -7,7 +7,7 @@ use tauri::{AppHandle, Manager};
 use tauri_plugin_fs::FsExt;
 
 use crate::database::models::{
-    Book, BookSettings, BookWithDetails, Collection, CollectionWithCount, NewCollection, UpdateBook,
+    Book, BookSettings, BookWithDetails, Bookmark, Collection, CollectionWithCount, NewBookmark, NewCollection, UpdateBook,
     UpdateCollection,
 };
 use crate::database::operations;
@@ -440,4 +440,49 @@ pub async fn update_book_settings(
         sync_progress,
     )
     .map_err(|e| e.into())
+}
+
+// ============================================================================
+// BOOKMARK COMMANDS
+// ============================================================================
+
+/// Create a new bookmark
+#[tauri::command]
+pub async fn create_bookmark(
+    book_id: i32,
+    name: String,
+    description: Option<String>,
+    page: i32,
+) -> Result<Bookmark, String> {
+    let new_bookmark = NewBookmark {
+        book_id,
+        name,
+        description,
+        page,
+        uuid: Some(uuid::Uuid::new_v4().to_string()),
+    };
+
+    operations::create_bookmark(new_bookmark).map_err(|e| e.into())
+}
+
+/// Get all bookmarks for a book
+#[tauri::command]
+pub async fn get_bookmarks(book_id: i32) -> Result<Vec<Bookmark>, String> {
+    operations::get_bookmarks_for_book(book_id).map_err(|e| e.into())
+}
+
+/// Update a bookmark
+#[tauri::command]
+pub async fn update_bookmark(
+    bookmark_id: i32,
+    name: String,
+    description: Option<String>,
+) -> Result<Bookmark, String> {
+    operations::update_bookmark(bookmark_id, name, description).map_err(|e| e.into())
+}
+
+/// Delete a bookmark
+#[tauri::command]
+pub async fn delete_bookmark(bookmark_id: i32) -> Result<(), String> {
+    operations::delete_bookmark(bookmark_id).map_err(|e| e.into())
 }
