@@ -156,7 +156,7 @@
   }
 
   const fuseOptions = {
-    threshold: 0.4,
+    threshold: 0.3,
     ignoreLocation: true,
     includeScore: true,
     getFn: (obj: object, path: string | string[]) => {
@@ -521,6 +521,7 @@
     <div class="mb-6 flex items-center gap-3">
       <Search
         clearable
+        clearableOnClick={() => { search = ""; }}
         class="flex-1"
         bind:value={search}
         placeholder="Search books and collections..."
@@ -553,7 +554,7 @@
           {getCollectionSortLabel()}
           <ChevronDownOutline class="ms-1.5 h-3 w-3" />
         </Button>
-        <Dropdown class="list-none" triggeredBy=".collection-sort-btn" placement="bottom-end">
+        <Dropdown simple triggeredBy=".collection-sort-btn" placement="bottom-end">
           {#each collectionSortOptions as option (option.value)}
             <DropdownItem
               onclick={() => (collectionSortField = option.value)}
@@ -622,7 +623,7 @@
           {getBookSortLabel()}
           <ChevronDownOutline class="ms-1.5 h-3 w-3" />
         </Button>
-        <Dropdown class="list-none" triggeredBy=".book-sort-btn" placement="bottom-end">
+        <Dropdown simple triggeredBy=".book-sort-btn" placement="bottom-end">
           {#each bookSortOptions as option (option.value)}
             <DropdownItem
               onclick={() => (bookSortField = option.value)}

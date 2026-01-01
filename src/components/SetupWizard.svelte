@@ -13,7 +13,17 @@
     P,
     Spinner,
     Modal,
+    List,
+    Li,
+    A,
   } from "flowbite-svelte";
+  import {
+    BookOpenOutline,
+    CloudArrowUpOutline,
+    FolderOpenOutline,
+    ExclamationCircleOutline,
+    CodeBranchOutline,
+  } from "flowbite-svelte-icons";
 
   import { settingsApi, applyTheme, type ThemeMode } from "$lib";
   import { RadioDropdown } from "$components/settings";
@@ -35,7 +45,7 @@
   let errorMessage = $state("");
   let showError = $state(false);
 
-  let acceptedLicense = $state(false);
+  let acknowledgedInfo = $state(false);
   let themeMode = $state<ThemeMode>("system");
   let readingDirection = $state("rtl");
 
@@ -51,7 +61,7 @@
 
   // Navigation
   function canProceed(): boolean {
-    if (activeStep.id === "welcome") return acceptedLicense;
+    if (activeStep.id === "welcome") return acknowledgedInfo;
     return true;
   }
 
@@ -106,27 +116,73 @@
           <div>
             <Heading tag="h2">Welcome to Yomiyougu</Heading>
             <P class="mt-2 text-slate-600 dark:text-slate-400">
-              Let's get you set up to start reading.
+              A personal comic and manga reader
             </P>
           </div>
 
-          <Card class="text-left overflow-hidden p-6">
-            <div class="max-h-48 overflow-y-auto text-sm text-slate-600 dark:text-slate-400">
-              <Heading tag="h5" class="mb-2">MIT License</Heading>
-              <p class="leading-relaxed">
-                Permission is hereby granted, free of charge, to any person
-                obtaining a copy of this software and associated documentation
-                files (the "Software"), to deal in the Software without
-                restriction, including without limitation the rights to use,
-                copy, modify, merge, publish, distribute, sublicense, and/or
-                sell copies of the Software...
-              </p>
+          <Card class="text-left overflow-hidden p-6" size="xl">
+            <div class="max-h-64 overflow-y-auto text-sm text-slate-600 dark:text-slate-400 space-y-4">
+              <div>
+                <Heading tag="h6" class="mb-1 text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                  <BookOpenOutline class="w-4 h-4" />
+                  What This App Does
+                </Heading>
+                <p class="leading-relaxed">
+                  Yomiyougu is a personal reader for your own comic and manga files. 
+                  It does <strong>not</strong> distribute, download, or provide access to any copyrighted content.
+                  You are responsible for ensuring you have the rights to read any files you import.
+                </p>
+              </div>
+
+              <div>
+                <Heading tag="h6" class="mb-1 text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                  <CloudArrowUpOutline class="w-4 h-4" />
+                  Cloud Sync
+                </Heading>
+                <p class="leading-relaxed">
+                  If you enable sync, your files will be stored in <strong>your personal Google Drive</strong>.
+                  Be mindful of your storage limits — comic files can be large and may consume significant space.
+                </p>
+              </div>
+
+              <div>
+                <Heading tag="h6" class="mb-1 text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                  <FolderOpenOutline class="w-4 h-4" />
+                  Supported Formats
+                </Heading>
+                <p class="leading-relaxed">
+                  ZIP, CBZ, RAR*, and CBR* archives containing images.
+                  <span class="text-xs">(*RAR/CBR not supported on Android)</span>
+                </p>
+              </div>
+
+              <div>
+                <Heading tag="h6" class="mb-1 text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                  <ExclamationCircleOutline class="w-4 h-4" />
+                  Disclaimer
+                </Heading>
+                <p class="leading-relaxed">
+                  This software is provided "as is", without warranty of any kind.
+                  Use at your own risk.
+                </p>
+              </div>
+
+              <div>
+                <Heading tag="h6" class="mb-1 text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                  <CodeBranchOutline class="w-4 h-4" />
+                  Open Source
+                </Heading>
+                <p class="leading-relaxed">
+                  Found a bug or want to contribute? Visit us on
+                  <A href="https://github.com/Boris-Zalov/yomiyougu" target="_blank" class="inline">GitHub</A>.
+                </p>
+              </div>
             </div>
           </Card>
 
           <div class="flex">
-            <Checkbox bind:checked={acceptedLicense}>
-              I accept the license terms
+            <Checkbox bind:checked={acknowledgedInfo}>
+              I understand and want to continue
             </Checkbox>
           </div>
         </div>

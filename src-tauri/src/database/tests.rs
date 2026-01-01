@@ -211,6 +211,7 @@ mod database_tests {
                 file_size: Some(1024000),
                 file_hash: Some("abc123".to_string()),
                 title: title.to_string(),
+                current_page: 0,
                 total_pages: 100,
             };
 
@@ -229,7 +230,7 @@ mod database_tests {
             let book = create_test_book(&mut conn, "Test Manga");
 
             assert_eq!(book.title, "Test Manga");
-            assert_eq!(book.current_page, 1); // Default
+            assert_eq!(book.current_page, 0); // 0-indexed pages
             assert_eq!(book.total_pages, 100);
             assert!(!book.is_favorite); // Default false
             assert_eq!(book.reading_status, "unread"); // Default
@@ -247,6 +248,7 @@ mod database_tests {
                 file_size: None,
                 file_hash: None,
                 title: "Manga 1".to_string(),
+                current_page: 0,
                 total_pages: 50,
             };
 
@@ -257,6 +259,7 @@ mod database_tests {
                 file_size: None,
                 file_hash: None,
                 title: "Manga 2".to_string(),
+                current_page: 0,
                 total_pages: 60,
             };
 
@@ -374,6 +377,7 @@ mod database_tests {
                 file_size: None,
                 file_hash: None,
                 title: "Naruto".to_string(),
+                current_page: 0,
                 total_pages: 200,
             };
 
@@ -429,6 +433,7 @@ mod database_tests {
                     file_size: None,
                     file_hash: None,
                     title: "Test".to_string(),
+                    current_page: 0,
                     total_pages: 50,
                 })
                 .returning(Book::as_returning())
@@ -494,6 +499,7 @@ mod database_tests {
                     file_size: None,
                     file_hash: None,
                     title: format!("Book {}", i),
+                    current_page: 0,
                     total_pages: 100,
                 };
 
@@ -533,6 +539,7 @@ mod database_tests {
                 file_size: None,
                 file_hash: None,
                 title: "Test Book".to_string(),
+                current_page: 0,
                 total_pages: 100,
             };
 
@@ -654,6 +661,7 @@ mod database_tests {
                 file_size: None,
                 file_hash: None,
                 title: "Settings Test Book".to_string(),
+                current_page: 0,
                 total_pages: 100,
             };
 
@@ -838,6 +846,7 @@ mod database_tests {
                         file_size: None,
                         file_hash: None,
                         title: format!("Book {}", i),
+                        current_page: 0,
                         total_pages: 100,
                     })
                     .returning(Book::as_returning())
@@ -888,6 +897,7 @@ mod database_tests {
                         file_size: None,
                         file_hash: None,
                         title: format!("Collection Book {}", i),
+                        current_page: 0,
                         total_pages: 50,
                     })
                     .returning(Book::as_returning())
@@ -929,6 +939,7 @@ mod database_tests {
                         file_size: None,
                         file_hash: None,
                         title: title.to_string(),
+                        current_page: 0,
                         total_pages: 100,
                     })
                     .execute(&mut conn)
@@ -957,6 +968,7 @@ mod database_tests {
                         file_size: None,
                         file_hash: None,
                         title: format!("Book {}", i),
+                        current_page: 0,
                         total_pages: 100,
                     })
                     .returning(Book::as_returning())

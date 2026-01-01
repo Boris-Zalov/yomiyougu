@@ -34,13 +34,30 @@ pub fn load_settings(app: &tauri::AppHandle) -> Result<AppSettings, AppError> {
 
     let json = fs::read_to_string(&path).map_err(AppError::config_read_failed)?;
 
-    let settings: AppSettings =
+    let mut settings: AppSettings =
         serde_json::from_str(&json).map_err(AppError::config_parse_failed)?;
 
-    // TODO: Handle schema version migrations here
-    // if settings.version < SETTINGS_VERSION { migrate(settings) }
+    let defaults = create_default_settings();
+    merge_with_defaults(&mut settings, &defaults);
 
     Ok(settings)
+}
+
+/// Merge loaded settings with defaults to fill in any missing categories/settings
+fn merge_with_defaults(settings: &mut AppSettings, defaults: &AppSettings) {
+    for default_category in &defaults.categories {
+        if let Some(existing_category) = settings.categories.iter_mut()
+            .find(|c| c.id == default_category.id)
+        {
+            for default_setting in &default_category.settings {
+                if !existing_category.settings.iter().any(|s| s.key == default_setting.key) {
+                    existing_category.settings.push(default_setting.clone());
+                }
+            }
+        } else {
+            settings.categories.push(default_category.clone());
+        }
+    }
 }
 
 /// Save settings to disk

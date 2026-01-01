@@ -17,7 +17,6 @@ pub fn create_default_settings() -> AppSettings {
             create_reading_category(),
             create_library_category(),
             create_sync_category(),
-            create_advanced_category(),
         ],
     }
 }
@@ -143,16 +142,6 @@ fn create_sync_category() -> SettingCategory {
             SettingValue::Bool(true),
         ),
     ])
-}
-
-fn create_advanced_category() -> SettingCategory {
-    SettingCategory::new(
-        "advanced",
-        "Advanced",
-        "Advanced settings and developer options",
-    )
-    .with_icon("cog")
-    .add_settings(vec![])
 }
 
 #[cfg(test)]
