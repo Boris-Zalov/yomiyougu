@@ -38,6 +38,14 @@ export async function syncNow(): Promise<SyncResult> {
 }
 
 /**
+ * Download a cloud-only book from Google Drive
+ * Called when user tries to read a book with cloud:// file path
+ */
+export async function downloadCloudBook(bookId: number): Promise<import("$lib/types/library").Book> {
+  return invoke<import("$lib/types/library").Book>("download_cloud_book", { bookId });
+}
+
+/**
  * Parse sync status into a human-readable string
  */
 export function formatSyncStatus(status: SyncStatus): string {

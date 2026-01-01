@@ -4,12 +4,12 @@
   import { fade } from "svelte/transition";
   import { page, navigating } from "$app/state";
 
-  import { settingsApi, applyTheme, type ThemeMode } from "$lib";
+  import { settingsApi, applyTheme, type ThemeMode, setIsAndroid } from "$lib";
   import SplashScreen from "$components/SplashScreen.svelte";
   import SetupWizard from "$components/SetupWizard.svelte";
   import DesktopNavigation from "$components/DesktopNavigation.svelte";
   import MobileNavigation from "$components/MobileNavigation.svelte";
-  import { LibrarySkeleton, DashboardSkeleton, SettingsSkeleton } from "$components/skeletons";
+  import { LibrarySkeleton, DashboardSkeleton, SettingsSkeleton, ReaderSkeleton } from "$components/skeletons";
 
   let { children } = $props();
 
@@ -19,6 +19,7 @@
 
   function getSkeletonForPath(path: string | undefined) {
     if (!path) return null;
+    if (path.startsWith('/reader')) return 'reader';
     if (path.startsWith('/library')) return 'library';
     if (path.startsWith('/dashboard') || path === '/') return 'dashboard';
     if (path.startsWith('/settings')) return 'settings';
@@ -26,9 +27,15 @@
   }
 
   let skeletonType = $derived(getSkeletonForPath(targetPath));
+  
+  // Check if we're currently on the reader page (hide navigation)
+  let isReaderPage = $derived(page.url.pathname.startsWith('/reader'));
 
   const currentPlatform = platform();
   const isMobile = currentPlatform === "android" || currentPlatform === "ios";
+  const isAndroid = currentPlatform === "android";
+  
+  setIsAndroid(isAndroid);
 
   let showSplash = $state(true);
   let showSetup = $state(false);
@@ -83,37 +90,50 @@
 {:else if showSetup}
   <SetupWizard onFinish={handleSetupFinished} />
 {:else if appReady}
-  <div class="h-screen w-screen flex flex-col overflow-hidden" transition:fade>
-    {#if isMobile}
-      <main class="flex-1 overflow-y-auto overscroll-contain pt-7 pb-26 relative isolate">
-        {#if isNavigating && skeletonType}
-          {#if skeletonType === 'library'}
-            <LibrarySkeleton />
-          {:else if skeletonType === 'dashboard'}
-            <DashboardSkeleton />
-          {:else if skeletonType === 'settings'}
-            <SettingsSkeleton />
-          {/if}
-        {:else}
-          {@render children()}
-        {/if}
-      </main>
-      <MobileNavigation />
+  {#if isReaderPage}
+    <!-- Reader has no navigation wrapper -->
+    {#if isNavigating && skeletonType === 'reader'}
+      <ReaderSkeleton />
     {:else}
-      <DesktopNavigation {activePath} />
-      <main class="flex-1 overflow-y-auto relative isolate">
-        {#if isNavigating && skeletonType}
-          {#if skeletonType === 'library'}
-            <LibrarySkeleton />
-          {:else if skeletonType === 'dashboard'}
-            <DashboardSkeleton />
-          {:else if skeletonType === 'settings'}
-            <SettingsSkeleton />
-          {/if}
-        {:else}
-          {@render children()}
-        {/if}
-      </main>
+      {@render children()}
     {/if}
-  </div>
+  {:else}
+    <div class="h-screen w-screen flex flex-col overflow-hidden" transition:fade>
+      {#if isMobile}
+        <main class="flex-1 overflow-y-auto overscroll-contain pt-7 pb-26 relative isolate">
+          {#if isNavigating && skeletonType}
+            {#if skeletonType === 'library'}
+              <LibrarySkeleton />
+            {:else if skeletonType === 'dashboard'}
+              <DashboardSkeleton />
+            {:else if skeletonType === 'settings'}
+              <SettingsSkeleton />
+            {:else if skeletonType === 'reader'}
+              <ReaderSkeleton />
+            {/if}
+          {:else}
+            {@render children()}
+          {/if}
+        </main>
+        <MobileNavigation />
+      {:else}
+        <DesktopNavigation {activePath} />
+        <main class="flex-1 overflow-y-auto relative isolate">
+          {#if isNavigating && skeletonType}
+            {#if skeletonType === 'library'}
+              <LibrarySkeleton />
+            {:else if skeletonType === 'dashboard'}
+              <DashboardSkeleton />
+            {:else if skeletonType === 'settings'}
+              <SettingsSkeleton />
+            {:else if skeletonType === 'reader'}
+              <ReaderSkeleton />
+            {/if}
+          {:else}
+            {@render children()}
+          {/if}
+        </main>
+      {/if}
+    </div>
+  {/if}
 {/if}

@@ -83,11 +83,16 @@ fn open_vault(app: &tauri::AppHandle) -> Result<Stronghold, AppError> {
     Stronghold::new(&vault_path, password).map_err(|e| AppError::config_read_failed(e.to_string()))
 }
 
-/// Check if user is authenticated (has valid token)
+/// Check if user is authenticated (has valid token or can refresh)
 pub fn get_auth_status(app: &tauri::AppHandle) -> Result<AuthStatus, AppError> {
     match load_token(app) {
         Ok(token) => {
-            log::debug!("Token loaded successfully, is_expired: {}", token.is_expired());
+            log::debug!(
+                "Token loaded: is_expired={}, can_refresh={}, is_authenticated={}",
+                token.is_expired(),
+                token.can_refresh(),
+                token.is_authenticated()
+            );
             Ok(AuthStatus::from_token(&token))
         }
         Err(e) => {

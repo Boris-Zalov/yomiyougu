@@ -1,6 +1,6 @@
 //! Sync-related Tauri commands
 
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 
 use crate::auth;
 use crate::commands::device::get_device_id;
@@ -82,17 +82,47 @@ async fn sync_now_impl(app: &AppHandle) -> Result<SyncResult, AppError> {
 
     // Check if token needs refresh
     let token = auth::load_token(app)?;
+    
+    log::info!(
+        "Token status: is_expired={}, can_refresh={}, has_refresh_token={}",
+        token.is_expired(),
+        token.can_refresh(),
+        token.refresh_token.is_some()
+    );
+    
     let access_token = if token.is_expired() {
+        if !token.can_refresh() {
+            log::error!("Access token expired and no refresh token available - user needs to re-authenticate");
+            return Err(AppError::not_authenticated());
+        }
+        
         // Refresh the token
-        log::info!("Access token expired, refreshing...");
+        log::info!("Access token expired, attempting refresh...");
         let client_id = std::env::var("VITE_GOOGLE_CLIENT_ID")
             .map_err(|_| AppError::config_read_failed("VITE_GOOGLE_CLIENT_ID not set"))?;
         let client_secret = std::env::var("VITE_GOOGLE_CLIENT_SECRET")
             .map_err(|_| AppError::config_read_failed("VITE_GOOGLE_CLIENT_SECRET not set"))?;
         
-        let new_token = crate::commands::auth::refresh_token_internal(&client_id, &client_secret, &token).await?;
-        auth::save_token(app, &new_token)?;
-        new_token.access_token
+        match crate::commands::auth::refresh_token_internal(&client_id, &client_secret, &token).await {
+            Ok(new_token) => {
+                log::info!(
+                    "Token refreshed successfully, new expiration: {:?}",
+                    new_token.expires_at
+                );
+                auth::save_token(app, &new_token)?;
+                new_token.access_token
+            }
+            Err(e) => {
+                log::error!("Failed to refresh token: {:?}", e);
+                // Clear the stored token so user knows they need to re-auth
+                if let Err(clear_err) = auth::clear_token(app) {
+                    log::warn!("Failed to clear invalid token: {:?}", clear_err);
+                }
+                return Err(AppError::sync_failed(format!(
+                    "Your Google Drive access has expired. Please sign in again. ({})", e
+                )));
+            }
+        }
     } else {
         token.access_token
     };
@@ -199,4 +229,106 @@ async fn sync_book_files(
     // Books synced from other devices will have cloud://{uuid} paths until downloaded
     
     Ok(())
+}
+
+/// Download a cloud-only book file from Google Drive
+/// This is called when user tries to read a book that has cloud:// file path
+#[tauri::command]
+pub async fn download_cloud_book(app: AppHandle, book_id: i32) -> Result<crate::database::models::Book, String> {
+    download_cloud_book_impl(&app, book_id).await.map_err(|e| e.into())
+}
+
+async fn download_cloud_book_impl(app: &AppHandle, book_id: i32) -> Result<crate::database::models::Book, AppError> {
+    use crate::database::get_connection;
+    use crate::database::models::Book;
+    use crate::schema::books;
+    use diesel::prelude::*;
+
+    log::info!("Downloading cloud book with id: {}", book_id);
+
+    // Get the book from database
+    let mut conn = get_connection()?;
+    let book: Book = books::table
+        .find(book_id)
+        .first(&mut conn)
+        .map_err(|e| AppError::database_error(format!("Book not found: {}", e)))?;
+
+    // Verify it's a cloud-only book
+    if !book.file_path.starts_with("cloud://") {
+        return Err(AppError::sync_failed("Book is not cloud-only, file already exists locally"));
+    }
+
+    // Get file_hash - required for cloud books
+    let file_hash = book.file_hash.as_ref()
+        .ok_or_else(|| AppError::sync_failed("Cloud book missing file_hash"))?;
+
+    // Check authentication
+    let auth_status = auth::get_auth_status(app)?;
+    if !auth_status.is_authenticated {
+        return Err(AppError::not_authenticated());
+    }
+
+    // Get access token (refresh if needed)
+    let token = auth::load_token(app)?;
+    let access_token = if token.is_expired() {
+        if !token.can_refresh() {
+            return Err(AppError::not_authenticated());
+        }
+        
+        let client_id = std::env::var("VITE_GOOGLE_CLIENT_ID")
+            .map_err(|_| AppError::config_read_failed("VITE_GOOGLE_CLIENT_ID not set"))?;
+        let client_secret = std::env::var("VITE_GOOGLE_CLIENT_SECRET")
+            .map_err(|_| AppError::config_read_failed("VITE_GOOGLE_CLIENT_SECRET not set"))?;
+        
+        match crate::commands::auth::refresh_token_internal(&client_id, &client_secret, &token).await {
+            Ok(new_token) => {
+                auth::save_token(app, &new_token)?;
+                new_token.access_token
+            }
+            Err(e) => {
+                return Err(AppError::sync_failed(format!("Token refresh failed: {}", e)));
+            }
+        }
+    } else {
+        token.access_token
+    };
+
+    let drive = DriveSync::with_token(access_token);
+
+    // Determine local storage path
+    let app_data_dir = app.path()
+        .app_data_dir()
+        .map_err(|e| AppError::config_read_failed(format!("Failed to get app data dir: {}", e)))?;
+    
+    let books_dir = app_data_dir.join("books");
+    std::fs::create_dir_all(&books_dir)
+        .map_err(|e| AppError::sync_failed(format!("Failed to create books directory: {}", e)))?;
+
+    // Use the original filename for the local file
+    let target_path = books_dir.join(&book.filename);
+    let target_path_str = target_path.to_string_lossy().to_string();
+
+    log::info!("Downloading book to: {}", target_path_str);
+
+    // Download the file
+    drive.download_book_file(file_hash, &target_path_str).await?;
+
+    // Update the book's file_path in the database
+    diesel::update(books::table.find(book_id))
+        .set((
+            books::file_path.eq(&target_path_str),
+            books::updated_at.eq(chrono::Utc::now().naive_utc()),
+        ))
+        .execute(&mut conn)
+        .map_err(|e| AppError::database_error(format!("Failed to update book path: {}", e)))?;
+
+    // Return the updated book
+    let updated_book: Book = books::table
+        .find(book_id)
+        .first(&mut conn)
+        .map_err(|e| AppError::database_error(format!("Failed to fetch updated book: {}", e)))?;
+
+    log::info!("Successfully downloaded cloud book: {}", updated_book.title);
+
+    Ok(updated_book)
 }
