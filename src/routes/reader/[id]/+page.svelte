@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy } from "svelte";
+  import { onMount, onDestroy, tick } from "svelte";
   import { page } from "$app/state";
   import { goto } from "$app/navigation";
   import { 
@@ -64,9 +64,11 @@
   
   // UI state
   let showOverlay = $state(false);
-  let showSettingsPanel = $state(false);
+  let showSettingsDrawer = $state(false);
   let showBookmarkDrawer = $state(false);
   let showBookmarkModal = $state(false);
+  let showPageJumpModal = $state(false);
+  let pageJumpInput = $state("");
   let showToast = $state(false);
   let toastMessage = $state("");
   let toastType = $state<"success" | "error">("success");
@@ -90,13 +92,46 @@
   
   // Preloaded images
   let preloadedImages = new Set<number>();
+  
+  // Scroll container for continuous mode
+  let scrollContainer: HTMLDivElement | null = $state(null);
+  let isScrolling = $state(false);
+  let scrollTimeout: ReturnType<typeof setTimeout> | null = null;
 
   // Computed values
   let totalPages = $derived(book?.total_pages ?? 0);
   let isFavorite = $derived(book?.is_favorite ?? false);
   let isVertical = $derived(readingDirection === "vertical");
+  let isContinuous = $derived(pageDisplayMode === "continuous");
+  let isDouble = $derived(pageDisplayMode === "double");
   let pageProgress = $derived(totalPages > 0 ? Math.round(((currentPage + 1) / totalPages) * 100) : 0);
   let sortedBookmarks = $derived([...bookmarks].sort((a, b) => a.page - b.page));
+  
+  // For double page mode: get the second page index (if exists)
+  let secondPageIndex = $derived(() => {
+    if (!isDouble || currentPage >= totalPages - 1) return null;
+    return currentPage + 1;
+  });
+  
+  // Page step for navigation (2 for double mode, 1 otherwise)
+  let pageStep = $derived(isDouble ? 2 : 1);
+  
+  let pageDisplayText = $derived(() => {
+    if (isDouble && secondPageIndex() !== null) {
+      return `${currentPage + 1}-${currentPage + 2}`;
+    }
+    return `${currentPage + 1}`;
+  });
+  
+  let isAtLastPage = $derived(() => {
+    if (isDouble) {
+      return currentPage >= totalPages - 2;
+    }
+    return currentPage >= totalPages - 1;
+  });
+  
+  // Check if we're at the first page
+  let isAtFirstPage = $derived(currentPage === 0);
 
   // Image fit classes
   let imageFitClass = $derived(() => {
@@ -127,8 +162,67 @@
     if (isAndroid) {
       setFullscreen(false);
     }
+    if (scrollTimeout) {
+      clearTimeout(scrollTimeout);
+    }
     document.removeEventListener("keydown", handleKeyDown);
   });
+
+  // Handle scroll for continuous mode
+  function handleContinuousScroll() {
+    if (!scrollContainer || !isContinuous) return;
+    
+    isScrolling = true;
+    
+    if (scrollTimeout) {
+      clearTimeout(scrollTimeout);
+    }
+    
+    scrollTimeout = setTimeout(async () => {
+      isScrolling = false;
+      
+      const containerRect = scrollContainer!.getBoundingClientRect();
+      const containerCenter = containerRect.top + containerRect.height / 2;
+      
+      const pageElements = scrollContainer!.querySelectorAll('[data-page-index]');
+      let closestPage = 0;
+      let closestDistance = Infinity;
+      
+      pageElements.forEach((el) => {
+        const rect = el.getBoundingClientRect();
+        const pageCenter = rect.top + rect.height / 2;
+        const distance = Math.abs(pageCenter - containerCenter);
+        
+        if (distance < closestDistance) {
+          closestDistance = distance;
+          closestPage = parseInt(el.getAttribute('data-page-index') || '0');
+        }
+      });
+      
+      if (closestPage !== currentPage) {
+        currentPage = closestPage;
+        try {
+          await libraryApi.updateReadingProgress(bookId, currentPage);
+          
+          if (currentPage === totalPages - 1 && book) {
+            await libraryApi.markAsCompleted(book);
+          }
+        } catch (e) {
+          console.error("Failed to save progress:", e);
+        }
+      }
+    }, 150);
+  }
+
+  // Scroll to specific page in continuous mode
+  function scrollToPage(pageNum: number) {
+    if (!scrollContainer || !isContinuous) return;
+    
+    const pageElement = scrollContainer.querySelector(`[data-page-index="${pageNum}"]`);
+    if (pageElement) {
+      pageElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }
 
   async function loadData() {
     isLoading = true;
@@ -159,11 +253,22 @@
       pageDisplayMode = (bookSettings?.page_display_mode ?? defaultDisplayMode) as typeof pageDisplayMode;
       imageFitMode = (bookSettings?.image_fit_mode ?? defaultFitMode) as typeof imageFitMode;
       
+      // For double page mode, ensure we start on an even page
+      if (pageDisplayMode === "double" && currentPage % 2 !== 0) {
+        currentPage = Math.max(0, currentPage - 1);
+      }
+      
       if (book.reading_status === "unread") {
         await libraryApi.startReading(bookId);
       }
       
       preloadPages();
+      
+      // Scroll to current page in continuous mode after a short delay (for DOM to update)
+      if (pageDisplayMode === "continuous") {
+        await tick();
+        scrollToPage(currentPage);
+      }
       
     } catch (e) {
       console.error("Failed to load book:", e);
@@ -188,13 +293,24 @@
   async function goToPage(pageNum: number) {
     if (pageNum < 0 || pageNum >= totalPages || pageNum === currentPage) return;
     
+    // For double page mode, ensure we're on an even page
+    if (isDouble && pageNum % 2 !== 0) {
+      pageNum = pageNum - 1;
+    }
+    
+    if (pageNum === currentPage) return;
+    
     isImageLoading = true;
     currentPage = pageNum;
     const savePromise = (async () => {
       try {
         await libraryApi.updateReadingProgress(bookId, currentPage);
         
-        if (currentPage === totalPages - 1 && book) {
+        // Check if completed (last page or last spread)
+        const isAtEnd = isDouble 
+          ? currentPage >= totalPages - 2 
+          : currentPage === totalPages - 1;
+        if (isAtEnd && book) {
           await libraryApi.markAsCompleted(book);
         }
       } catch (e) {
@@ -210,27 +326,17 @@
   }
 
   function nextPage() {
-    if (isVertical) {
-      goToPage(currentPage + 1);
-    } else if (readingDirection === "rtl") {
-      goToPage(currentPage + 1);
-    } else {
-      goToPage(currentPage + 1);
-    }
+    const step = isDouble ? 2 : 1;
+    goToPage(currentPage + step);
   }
 
   function prevPage() {
-    if (isVertical) {
-      goToPage(currentPage - 1);
-    } else if (readingDirection === "rtl") {
-      goToPage(currentPage - 1);
-    } else {
-      goToPage(currentPage - 1);
-    }
+    const step = isDouble ? 2 : 1;
+    goToPage(currentPage - step);
   }
 
   function handleKeyDown(e: KeyboardEvent) {
-    if (showBookmarkModal || showSettingsPanel) return;
+    if (showBookmarkModal || showSettingsDrawer || showBookmarkDrawer) return;
     
     switch (e.key) {
       case "ArrowLeft":
@@ -260,7 +366,6 @@
       case "Escape":
         if (showOverlay) {
           showOverlay = false;
-          showSettingsPanel = false;
         } else {
           closeReader();
         }
@@ -320,7 +425,6 @@
     
     if (x > centerXStart && x < centerXEnd && y > centerYStart && y < centerYEnd) {
       showOverlay = !showOverlay;
-      if (!showOverlay) showSettingsPanel = false;
       return;
     }
     
@@ -411,10 +515,19 @@
   }
 
   async function goToBookmark(bookmark: Bookmark) {
-    goToPage(bookmark.page);
+    if (isContinuous) {
+      scrollToPage(bookmark.page);
+      currentPage = bookmark.page;
+      try {
+        await libraryApi.updateReadingProgress(bookId, currentPage);
+      } catch (e) {
+        console.error("Failed to save progress:", e);
+      }
+    } else {
+      goToPage(bookmark.page);
+    }
     showBookmarkDrawer = false;
     showOverlay = false;
-    showSettingsPanel = false;
   }
 
   async function updateBookSetting(key: keyof BookSettings, value: string | boolean) {
@@ -427,6 +540,12 @@
       } else if (key === "page_display_mode") {
         pageDisplayMode = value as typeof pageDisplayMode;
         updates.pageDisplayMode = value as string;
+        
+        // Force vertical mode when continuous is selected
+        if (value === "continuous" && readingDirection !== "vertical") {
+          readingDirection = "vertical";
+          updates.readingDirection = "vertical";
+        }
       } else if (key === "image_fit_mode") {
         imageFitMode = value as typeof imageFitMode;
         updates.imageFitMode = value as string;
@@ -443,6 +562,30 @@
     toastType = type;
     showToast = true;
     setTimeout(() => { showToast = false; }, 3000);
+  }
+
+  function openPageJumpModal() {
+    pageJumpInput = String(currentPage + 1);
+    showPageJumpModal = true;
+  }
+
+  function handlePageJump() {
+    const pageNum = parseInt(pageJumpInput, 10);
+    if (isNaN(pageNum) || pageNum < 1 || pageNum > totalPages) {
+      showToastMessage(`Please enter a valid page (1-${totalPages})`, "error");
+      return;
+    }
+    
+    const targetPage = pageNum - 1; // Convert to 0-indexed
+    if (isContinuous) {
+      scrollToPage(targetPage);
+      currentPage = targetPage;
+      libraryApi.updateReadingProgress(bookId, currentPage).catch(console.error);
+    } else {
+      goToPage(targetPage);
+    }
+    showPageJumpModal = false;
+    showOverlay = false;
   }
 
   async function closeReader() {
@@ -483,34 +626,100 @@
   <!-- Main Reader - keyboard handling is done via document event listener in onMount -->
   <!-- svelte-ignore a11y_no_noninteractive_element_interactions a11y_click_events_have_key_events -->
   <div 
-    class="h-full w-full relative select-none overflow-hidden"
+    class="h-full w-full relative select-none"
+    class:overflow-hidden={!isContinuous}
+    class:overflow-y-auto={isContinuous}
     class:bg-black={isDarkMode}
     class:bg-gray-100={!isDarkMode}
-    onclick={handleReaderClick}
+    onclick={isContinuous ? undefined : handleReaderClick}
     onkeydown={() => {}}
-    ontouchstart={handleTouchStart}
-    ontouchend={handleTouchEnd}
+    ontouchstart={isContinuous ? undefined : handleTouchStart}
+    ontouchend={isContinuous ? undefined : handleTouchEnd}
+    onscroll={isContinuous ? handleContinuousScroll : undefined}
+    bind:this={scrollContainer}
     role="application"
     aria-label="Comic reader"
   >
-    <!-- Page Image -->
-    <div class="h-full w-full flex items-center justify-center">
-      {#if isImageLoading}
-        <div class="absolute inset-0 flex items-center justify-center">
-          <Spinner size="8" />
+    <!-- Continuous Mode: All pages in a vertical scrollable container -->
+    {#if isContinuous}
+      <div 
+        class="flex flex-col items-center gap-1 pb-16"
+        onclick={() => showOverlay = !showOverlay}
+        onkeydown={() => {}}
+        role="button"
+        tabindex="0"
+      >
+        {#each Array(totalPages) as _, pageIndex}
+          <div 
+            data-page-index={pageIndex}
+            class="flex items-center justify-center w-full"
+          >
+            <img 
+              src={getPagePath(bookId, pageIndex)}
+              alt="Page {pageIndex + 1}"
+              class={imageFitClass()}
+              draggable="false"
+              loading="lazy"
+            />
+          </div>
+        {/each}
+      </div>
+    <!-- Double Page Mode: Two pages side by side -->
+    {:else if isDouble}
+      <div class="h-full w-full flex items-center justify-center">
+        {#if isImageLoading}
+          <div class="absolute inset-0 flex items-center justify-center">
+            <Spinner size="8" />
+          </div>
+        {/if}
+        <div class="h-full flex items-center justify-center gap-1 {readingDirection === 'rtl' ? 'flex-row-reverse' : 'flex-row'}">
+          <!-- First page (left in LTR, right in RTL) -->
+          {#key currentPage}
+          <img 
+            src={getPagePath(bookId, currentPage)}
+            alt="Page {currentPage + 1}"
+            class="{imageFitClass()} max-w-[50vw]"
+            onload={onImageLoad}
+            onerror={onImageLoad}
+            draggable="false"
+          />
+          {/key}
+          <!-- Second page (if exists) -->
+          {#if secondPageIndex() !== null}
+            {#key secondPageIndex()}
+            <img 
+              src={getPagePath(bookId, secondPageIndex()!)}
+              alt="Page {secondPageIndex()! + 1}"
+              class="{imageFitClass()} max-w-[50vw]"
+              draggable="false"
+            />
+            {/key}
+          {/if}
         </div>
-      {/if}
-      <img 
-        src={getPagePath(bookId, currentPage)}
-        alt="Page {currentPage + 1}"
-        class={imageFitClass()}
-        onload={onImageLoad}
-        draggable="false"
-      />
-    </div>
+      </div>
+    <!-- Single Page Mode -->
+    {:else}
+      <div class="h-full w-full flex items-center justify-center">
+        {#if isImageLoading}
+          <div class="absolute inset-0 flex items-center justify-center">
+            <Spinner size="8" />
+          </div>
+        {/if}
+        {#key currentPage}
+        <img 
+          src={getPagePath(bookId, currentPage)}
+          alt="Page {currentPage + 1}"
+          class={imageFitClass()}
+          onload={onImageLoad}
+          onerror={onImageLoad}
+          draggable="false"
+        />
+        {/key}
+      </div>
+    {/if}
 
-    <!-- Navigation Hints (shown briefly or on hover) -->
-    {#if !isVertical && !showOverlay}
+    <!-- Navigation Hints (shown briefly or on hover) - only for single/double non-vertical -->
+    {#if !isVertical && !isContinuous && !showOverlay}
       <div class="absolute inset-y-0 left-0 w-[30%] flex items-center justify-start pl-4 opacity-0 hover:opacity-30 transition-opacity pointer-events-none">
         {#if readingDirection === "rtl"}
           <ChevronRightOutline class="w-12 h-12 text-white drop-shadow-lg" />
@@ -527,22 +736,24 @@
       </div>
     {/if}
 
-    <!-- Bottom Progress Bar (always visible) -->
-    <div class="absolute bottom-0 left-0 right-0 h-1 bg-black/30 {readingDirection === 'rtl' ? 'flex justify-end' : ''}">
+  </div>
+
+    <!-- Bottom Progress Bar (fixed position so it doesn't scroll with content) -->
+    <div class="fixed bottom-0 left-0 right-0 h-1 bg-black/30 z-30 {readingDirection === 'rtl' ? 'flex justify-end' : ''}">
       <div 
         class="h-full bg-primary-500 transition-all duration-300"
         style="width: {pageProgress}%"
       ></div>
     </div>
 
-    <!-- Overlay UI -->
+    <!-- Overlay UI (fixed position so it doesn't scroll with content) -->
     {#if showOverlay}
       <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-      <div class="absolute inset-0 bg-black/40 transition-opacity" role="presentation" onclick={(e) => { e.stopPropagation(); showOverlay = false; showSettingsPanel = false; }}>
+      <div class="fixed inset-0 bg-black/40 transition-opacity z-40" role="presentation" onclick={(e) => { e.stopPropagation(); showOverlay = false; }}>
         <!-- Top Bar (title+actions on desktop, page info on Android) -->
         <!-- svelte-ignore a11y_click_events_have_key_events -->
         <div 
-          class="absolute top-0 left-0 right-0 p-4 flex items-center justify-between {isDarkMode ? 'bg-gray-900/90' : 'bg-white/90'}"
+          class="fixed top-0 left-0 right-0 p-4 flex items-center justify-between z-50 {isDarkMode ? 'bg-gray-900/90' : 'bg-white/90'}"
           onclick={(e) => e.stopPropagation()}
           role="toolbar"
           aria-label="Reader toolbar"
@@ -556,18 +767,21 @@
                 <button 
                   class="p-2 rounded-full hover:bg-black/20 transition-colors disabled:opacity-30"
                   onclick={(e) => { e.stopPropagation(); prevPage(); }}
-                  disabled={currentPage === 0}
+                  disabled={isAtFirstPage}
                   aria-label="Previous page"
                 >
                   <ChevronUpOutline class="w-6 h-6 {isDarkMode ? 'text-white' : 'text-gray-900'}" />
                 </button>
-                <span class="text-sm font-medium px-2 {isDarkMode ? 'text-white' : 'text-gray-900'}">
-                  {currentPage + 1} / {totalPages}
-                </span>
+                <button 
+                  class="text-sm font-medium px-2 hover:underline {isDarkMode ? 'text-white' : 'text-gray-900'}"
+                  onclick={(e) => { e.stopPropagation(); openPageJumpModal(); }}
+                >
+                  {pageDisplayText()} / {totalPages}
+                </button>
                 <button 
                   class="p-2 rounded-full hover:bg-black/20 transition-colors disabled:opacity-30"
                   onclick={(e) => { e.stopPropagation(); nextPage(); }}
-                  disabled={currentPage >= totalPages - 1}
+                  disabled={isAtLastPage()}
                   aria-label="Next page"
                 >
                   <ChevronDownOutline class="w-6 h-6 {isDarkMode ? 'text-white' : 'text-gray-900'}" />
@@ -576,18 +790,21 @@
                 <button 
                   class="p-2 rounded-full hover:bg-black/20 transition-colors disabled:opacity-30"
                   onclick={(e) => { e.stopPropagation(); readingDirection === "rtl" ? nextPage() : prevPage(); }}
-                  disabled={readingDirection === "rtl" ? currentPage >= totalPages - 1 : currentPage === 0}
+                  disabled={readingDirection === "rtl" ? isAtLastPage() : isAtFirstPage}
                   aria-label={readingDirection === "rtl" ? "Next page" : "Previous page"}
                 >
                   <ChevronLeftOutline class="w-6 h-6 {isDarkMode ? 'text-white' : 'text-gray-900'}" />
                 </button>
-                <span class="text-sm font-medium px-2 {isDarkMode ? 'text-white' : 'text-gray-900'}">
-                  {currentPage + 1} / {totalPages}
-                </span>
+                <button 
+                  class="text-sm font-medium px-2 hover:underline {isDarkMode ? 'text-white' : 'text-gray-900'}"
+                  onclick={(e) => { e.stopPropagation(); openPageJumpModal(); }}
+                >
+                  {pageDisplayText()} / {totalPages}
+                </button>
                 <button 
                   class="p-2 rounded-full hover:bg-black/20 transition-colors disabled:opacity-30"
                   onclick={(e) => { e.stopPropagation(); readingDirection === "rtl" ? prevPage() : nextPage(); }}
-                  disabled={readingDirection === "rtl" ? currentPage === 0 : currentPage >= totalPages - 1}
+                  disabled={readingDirection === "rtl" ? isAtFirstPage : isAtLastPage()}
                   aria-label={readingDirection === "rtl" ? "Previous page" : "Next page"}
                 >
                   <ChevronRightOutline class="w-6 h-6 {isDarkMode ? 'text-white' : 'text-gray-900'}" />
@@ -628,8 +845,8 @@
 
             <!-- Settings -->
             <button 
-              onclick={() => showSettingsPanel = !showSettingsPanel}
-              class="p-2 rounded-lg hover:bg-black/20 transition-colors {showSettingsPanel ? 'bg-black/30' : ''}"
+              onclick={() => showSettingsDrawer = true}
+              class="p-2 rounded-lg hover:bg-black/20 transition-colors"
               aria-label="Reading settings"
             >
               <CogOutline class="w-6 h-6 {isDarkMode ? 'text-white' : 'text-gray-700'}" />
@@ -647,151 +864,12 @@
           {/if}
         </div>
 
-        <!-- Settings Panel -->
-        {#if showSettingsPanel}
-          <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-          <div 
-            class="absolute top-16 right-4 w-72 rounded-lg shadow-xl p-4 space-y-4"
-            class:bg-gray-900={isDarkMode}
-            class:text-white={isDarkMode}
-            class:bg-white={!isDarkMode}
-            class:text-gray-900={!isDarkMode}
-            role="dialog"
-            aria-label="Reading settings"
-            tabindex="-1"
-            onclick={(e) => e.stopPropagation()}
-          >
-            <h3 class="font-semibold text-lg">Reading Settings</h3>
-            
-            <!-- Reading Direction -->
-            <div>
-              <span class="text-sm font-medium block mb-2">Reading Direction</span>
-              <div class="grid grid-cols-3 gap-2">
-                <button 
-                  onclick={() => updateBookSetting("reading_direction", "ltr")}
-                  class="px-3 py-2 text-xs rounded transition-colors"
-                  class:bg-primary-600={readingDirection === "ltr"}
-                  class:text-white={readingDirection === "ltr"}
-                  class:bg-gray-700={readingDirection !== "ltr" && isDarkMode}
-                  class:bg-gray-200={readingDirection !== "ltr" && !isDarkMode}
-                >
-                  LTR
-                </button>
-                <button 
-                  onclick={() => updateBookSetting("reading_direction", "rtl")}
-                  class="px-3 py-2 text-xs rounded transition-colors"
-                  class:bg-primary-600={readingDirection === "rtl"}
-                  class:text-white={readingDirection === "rtl"}
-                  class:bg-gray-700={readingDirection !== "rtl" && isDarkMode}
-                  class:bg-gray-200={readingDirection !== "rtl" && !isDarkMode}
-                >
-                  RTL
-                </button>
-                <button 
-                  onclick={() => updateBookSetting("reading_direction", "vertical")}
-                  class="px-3 py-2 text-xs rounded transition-colors"
-                  class:bg-primary-600={readingDirection === "vertical"}
-                  class:text-white={readingDirection === "vertical"}
-                  class:bg-gray-700={readingDirection !== "vertical" && isDarkMode}
-                  class:bg-gray-200={readingDirection !== "vertical" && !isDarkMode}
-                >
-                  Vertical
-                </button>
-              </div>
-            </div>
-
-            <!-- Page Display Mode -->
-            <div>
-              <span class="text-sm font-medium block mb-2">Page Display</span>
-              <div class="grid grid-cols-3 gap-2">
-                <button 
-                  onclick={() => updateBookSetting("page_display_mode", "single")}
-                  class="px-3 py-2 text-xs rounded transition-colors"
-                  class:bg-primary-600={pageDisplayMode === "single"}
-                  class:text-white={pageDisplayMode === "single"}
-                  class:bg-gray-700={pageDisplayMode !== "single" && isDarkMode}
-                  class:bg-gray-200={pageDisplayMode !== "single" && !isDarkMode}
-                >
-                  Single
-                </button>
-                <button 
-                  onclick={() => updateBookSetting("page_display_mode", "double")}
-                  class="px-3 py-2 text-xs rounded transition-colors"
-                  class:bg-primary-600={pageDisplayMode === "double"}
-                  class:text-white={pageDisplayMode === "double"}
-                  class:bg-gray-700={pageDisplayMode !== "double" && isDarkMode}
-                  class:bg-gray-200={pageDisplayMode !== "double" && !isDarkMode}
-                >
-                  Double
-                </button>
-                <button 
-                  onclick={() => updateBookSetting("page_display_mode", "continuous")}
-                  class="px-3 py-2 text-xs rounded transition-colors"
-                  class:bg-primary-600={pageDisplayMode === "continuous"}
-                  class:text-white={pageDisplayMode === "continuous"}
-                  class:bg-gray-700={pageDisplayMode !== "continuous" && isDarkMode}
-                  class:bg-gray-200={pageDisplayMode !== "continuous" && !isDarkMode}
-                >
-                  Continuous
-                </button>
-              </div>
-            </div>
-
-            <!-- Image Fit Mode -->
-            <div>
-              <span class="text-sm font-medium block mb-2">Image Fit</span>
-              <div class="grid grid-cols-2 gap-2">
-                <button 
-                  onclick={() => updateBookSetting("image_fit_mode", "fit_width")}
-                  class="px-3 py-2 text-xs rounded transition-colors"
-                  class:bg-primary-600={imageFitMode === "fit_width"}
-                  class:text-white={imageFitMode === "fit_width"}
-                  class:bg-gray-700={imageFitMode !== "fit_width" && isDarkMode}
-                  class:bg-gray-200={imageFitMode !== "fit_width" && !isDarkMode}
-                >
-                  Fit Width
-                </button>
-                <button 
-                  onclick={() => updateBookSetting("image_fit_mode", "fit_height")}
-                  class="px-3 py-2 text-xs rounded transition-colors"
-                  class:bg-primary-600={imageFitMode === "fit_height"}
-                  class:text-white={imageFitMode === "fit_height"}
-                  class:bg-gray-700={imageFitMode !== "fit_height" && isDarkMode}
-                  class:bg-gray-200={imageFitMode !== "fit_height" && !isDarkMode}
-                >
-                  Fit Height
-                </button>
-                <button 
-                  onclick={() => updateBookSetting("image_fit_mode", "fit_screen")}
-                  class="px-3 py-2 text-xs rounded transition-colors"
-                  class:bg-primary-600={imageFitMode === "fit_screen"}
-                  class:text-white={imageFitMode === "fit_screen"}
-                  class:bg-gray-700={imageFitMode !== "fit_screen" && isDarkMode}
-                  class:bg-gray-200={imageFitMode !== "fit_screen" && !isDarkMode}
-                >
-                  Fit Screen
-                </button>
-                <button 
-                  onclick={() => updateBookSetting("image_fit_mode", "original")}
-                  class="px-3 py-2 text-xs rounded transition-colors"
-                  class:bg-primary-600={imageFitMode === "original"}
-                  class:text-white={imageFitMode === "original"}
-                  class:bg-gray-700={imageFitMode !== "original" && isDarkMode}
-                  class:bg-gray-200={imageFitMode !== "original" && !isDarkMode}
-                >
-                  Original
-                </button>
-              </div>
-            </div>
-          </div>
-        {/if}
-
         <!-- Bottom Bar - Page Info (on desktop) / Title+Actions (on Android) -->
         {#if isAndroid}
           <!-- Android: Title and actions at bottom -->
           <!-- svelte-ignore a11y_click_events_have_key_events -->
           <div 
-            class="absolute bottom-0 left-0 right-0 p-4 flex items-center justify-between {isDarkMode ? 'bg-gray-900/90' : 'bg-white/90'}"
+            class="fixed bottom-0 left-0 right-0 p-4 flex items-center justify-between z-50 {isDarkMode ? 'bg-gray-900/90' : 'bg-white/90'}"
             onclick={(e) => e.stopPropagation()}
             role="toolbar"
             aria-label="Reader toolbar"
@@ -828,8 +906,8 @@
 
               <!-- Settings -->
               <button 
-                onclick={() => showSettingsPanel = !showSettingsPanel}
-                class="p-2 rounded-lg hover:bg-black/20 transition-colors {showSettingsPanel ? 'bg-black/30' : ''}"
+                onclick={() => showSettingsDrawer = true}
+                class="p-2 rounded-lg hover:bg-black/20 transition-colors"
                 aria-label="Reading settings"
               >
                 <CogOutline class="w-6 h-6 {isDarkMode ? 'text-white' : 'text-gray-700'}" />
@@ -846,52 +924,50 @@
             </div>
           </div>
         {:else}
-          <!-- Desktop: Page info at bottom center -->
-          <!-- svelte-ignore a11y_click_events_have_key_events -->
-          <div 
-            class="absolute bottom-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full {isDarkMode ? 'bg-gray-900/90 text-white' : 'bg-white/90 text-gray-900'}"
-            onclick={(e) => e.stopPropagation()}
-            role="status"
-            aria-label="Page indicator"
+          <!-- Desktop: Page info at bottom center (clickable to jump to page) -->
+          <button 
+            class="fixed bottom-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full z-50 hover:ring-2 hover:ring-primary-500 transition-all {isDarkMode ? 'bg-gray-900/90 text-white' : 'bg-white/90 text-gray-900'}"
+            onclick={(e) => { e.stopPropagation(); openPageJumpModal(); }}
+            aria-label="Jump to page"
           >
             <span class="text-sm font-medium">
-              {currentPage + 1} / {totalPages}
+              {pageDisplayText()} / {totalPages}
             </span>
-          </div>
+          </button>
         {/if}
 
         <!-- Navigation Buttons (desktop only - on Android, they're in the bottom bar) -->
-        {#if !isAndroid}
+        {#if !isAndroid && !isContinuous}
           {#if isVertical}
             <button 
-              class="absolute top-1/2 left-4 -translate-y-1/2 p-3 rounded-full bg-black/50 hover:bg-black/70 transition-colors disabled:opacity-30"
+              class="fixed top-1/2 left-4 -translate-y-1/2 p-3 rounded-full bg-black/50 hover:bg-black/70 transition-colors disabled:opacity-30 z-50"
               onclick={(e) => { e.stopPropagation(); prevPage(); }}
-              disabled={currentPage === 0}
+              disabled={isAtFirstPage}
               aria-label="Previous page"
             >
               <ChevronUpOutline class="w-6 h-6 text-white" />
             </button>
             <button 
-              class="absolute top-1/2 right-4 -translate-y-1/2 p-3 rounded-full bg-black/50 hover:bg-black/70 transition-colors disabled:opacity-30"
+              class="fixed top-1/2 right-4 -translate-y-1/2 p-3 rounded-full bg-black/50 hover:bg-black/70 transition-colors disabled:opacity-30 z-50"
               onclick={(e) => { e.stopPropagation(); nextPage(); }}
-              disabled={currentPage >= totalPages - 1}
+              disabled={isAtLastPage()}
               aria-label="Next page"
             >
               <ChevronDownOutline class="w-6 h-6 text-white" />
             </button>
           {:else}
             <button 
-              class="absolute top-1/2 left-4 -translate-y-1/2 p-3 rounded-full bg-black/50 hover:bg-black/70 transition-colors disabled:opacity-30"
+              class="fixed top-1/2 left-4 -translate-y-1/2 p-3 rounded-full bg-black/50 hover:bg-black/70 transition-colors disabled:opacity-30 z-50"
               onclick={(e) => { e.stopPropagation(); readingDirection === "rtl" ? nextPage() : prevPage(); }}
-              disabled={readingDirection === "rtl" ? currentPage >= totalPages - 1 : currentPage === 0}
+              disabled={readingDirection === "rtl" ? isAtLastPage() : isAtFirstPage}
               aria-label={readingDirection === "rtl" ? "Next page" : "Previous page"}
             >
               <ChevronLeftOutline class="w-6 h-6 text-white" />
             </button>
             <button 
-              class="absolute top-1/2 right-4 -translate-y-1/2 p-3 rounded-full bg-black/50 hover:bg-black/70 transition-colors disabled:opacity-30"
+              class="fixed top-1/2 right-4 -translate-y-1/2 p-3 rounded-full bg-black/50 hover:bg-black/70 transition-colors disabled:opacity-30 z-50"
               onclick={(e) => { e.stopPropagation(); readingDirection === "rtl" ? prevPage() : nextPage(); }}
-              disabled={readingDirection === "rtl" ? currentPage === 0 : currentPage >= totalPages - 1}
+              disabled={readingDirection === "rtl" ? isAtFirstPage : isAtLastPage()}
               aria-label={readingDirection === "rtl" ? "Previous page" : "Next page"}
             >
               <ChevronRightOutline class="w-6 h-6 text-white" />
@@ -900,12 +976,11 @@
         {/if}
       </div>
     {/if}
-  </div>
 {/if}
 
 <!-- Bookmark Drawer -->
 <Drawer bind:open={showBookmarkDrawer} placement="right" aria-labelledby="bookmark-drawer-label">
-  <div class="flex items-center justify-between mb-4 mt-7">
+  <div class="flex items-center justify-between mb-4 mt-11">
     <h5 id="bookmark-drawer-label" class="inline-flex items-center text-base font-semibold text-gray-500 dark:text-gray-400">
       <BookmarkSolid class="me-2.5 h-5 w-5" />
       Bookmarks
@@ -957,6 +1032,107 @@
   {/if}
 </Drawer>
 
+<!-- Settings Drawer -->
+<Drawer bind:open={showSettingsDrawer} placement="right" aria-labelledby="settings-drawer-label">
+  <div class="mb-4 mt-11">
+    <h5 id="settings-drawer-label" class="inline-flex items-center text-base font-semibold text-gray-500 dark:text-gray-400">
+      <CogOutline class="me-2.5 h-5 w-5" />
+      Reading Settings
+    </h5>
+  </div>
+  
+  <div class="space-y-6">
+    <!-- Reading Direction -->
+    <div class:opacity-50={isContinuous}>
+      <span class="text-sm font-medium block mb-2 text-gray-900 dark:text-white">
+        Reading Direction
+        {#if isContinuous}
+          <span class="text-xs text-gray-500 dark:text-gray-400">(forced vertical)</span>
+        {/if}
+      </span>
+      <div class="grid grid-cols-3 gap-2">
+        <button 
+          onclick={() => updateBookSetting("reading_direction", "ltr")}
+          class="px-3 py-2 text-xs rounded transition-colors {readingDirection === 'ltr' ? 'bg-primary-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white'}"
+          disabled={isContinuous}
+        >
+          LTR
+        </button>
+        <button 
+          onclick={() => updateBookSetting("reading_direction", "rtl")}
+          class="px-3 py-2 text-xs rounded transition-colors {readingDirection === 'rtl' ? 'bg-primary-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white'}"
+          disabled={isContinuous}
+        >
+          RTL
+        </button>
+        <button 
+          onclick={() => updateBookSetting("reading_direction", "vertical")}
+          class="px-3 py-2 text-xs rounded transition-colors {readingDirection === 'vertical' ? 'bg-primary-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white'}"
+          disabled={isContinuous}
+        >
+          Vertical
+        </button>
+      </div>
+    </div>
+
+    <!-- Page Display Mode -->
+    <div>
+      <span class="text-sm font-medium block mb-2 text-gray-900 dark:text-white">Page Display</span>
+      <div class="grid grid-cols-3 gap-2">
+        <button 
+          onclick={() => updateBookSetting("page_display_mode", "single")}
+          class="px-3 py-2 text-xs rounded transition-colors {pageDisplayMode === 'single' ? 'bg-primary-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white'}"
+        >
+          Single
+        </button>
+        <button 
+          onclick={() => updateBookSetting("page_display_mode", "double")}
+          class="px-3 py-2 text-xs rounded transition-colors {pageDisplayMode === 'double' ? 'bg-primary-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white'}"
+        >
+          Double
+        </button>
+        <button 
+          onclick={() => updateBookSetting("page_display_mode", "continuous")}
+          class="px-3 py-2 text-xs rounded transition-colors {pageDisplayMode === 'continuous' ? 'bg-primary-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white'}"
+        >
+          Continuous
+        </button>
+      </div>
+    </div>
+
+    <!-- Image Fit Mode -->
+    <div>
+      <span class="text-sm font-medium block mb-2 text-gray-900 dark:text-white">Image Fit</span>
+      <div class="grid grid-cols-2 gap-2">
+        <button 
+          onclick={() => updateBookSetting("image_fit_mode", "fit_width")}
+          class="px-3 py-2 text-xs rounded transition-colors {imageFitMode === 'fit_width' ? 'bg-primary-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white'}"
+        >
+          Fit Width
+        </button>
+        <button 
+          onclick={() => updateBookSetting("image_fit_mode", "fit_height")}
+          class="px-3 py-2 text-xs rounded transition-colors {imageFitMode === 'fit_height' ? 'bg-primary-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white'}"
+        >
+          Fit Height
+        </button>
+        <button 
+          onclick={() => updateBookSetting("image_fit_mode", "fit_screen")}
+          class="px-3 py-2 text-xs rounded transition-colors {imageFitMode === 'fit_screen' ? 'bg-primary-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white'}"
+        >
+          Fit Screen
+        </button>
+        <button 
+          onclick={() => updateBookSetting("image_fit_mode", "original")}
+          class="px-3 py-2 text-xs rounded transition-colors {imageFitMode === 'original' ? 'bg-primary-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white'}"
+        >
+          Original
+        </button>
+      </div>
+    </div>
+  </div>
+</Drawer>
+
 <!-- Bookmark Modal -->
 <Modal bind:open={showBookmarkModal} size="sm" autoclose={false}>
   <div class="space-y-4">
@@ -985,6 +1161,29 @@
     <div class="flex gap-2 justify-end mt-4">
       <Button onclick={() => { showBookmarkModal = false; editingBookmark = null; }} color="alternative">Cancel</Button>
       <Button onclick={saveBookmark} disabled={!bookmarkName.trim()}>{editingBookmark ? 'Save' : 'Create'}</Button>
+    </div>
+  </div>
+</Modal>
+
+<!-- Page Jump Modal -->
+<Modal bind:open={showPageJumpModal} size="xs" autoclose={false}>
+  <div class="space-y-4">
+    <h3 class="text-lg font-semibold">Go to Page</h3>
+    <div>
+      <Label for="page-jump-input" class="mb-2">Page Number (1-{totalPages})</Label>
+      <Input 
+        id="page-jump-input" 
+        type="number"
+        min="1"
+        max={totalPages}
+        bind:value={pageJumpInput} 
+        placeholder="Enter page number"
+        onkeydown={(e: KeyboardEvent) => { if (e.key === 'Enter') handlePageJump(); }}
+      />
+    </div>
+    <div class="flex gap-2 justify-end mt-4">
+      <Button onclick={() => showPageJumpModal = false} color="alternative">Cancel</Button>
+      <Button onclick={handlePageJump}>Go</Button>
     </div>
   </div>
 </Modal>
