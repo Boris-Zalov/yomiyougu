@@ -894,6 +894,7 @@ pub fn import_book_from_archive(
             file_size,
             file_hash: Some(book_hash),
             title: title.clone(),
+            current_page: 0,
             total_pages,
             uuid: Some(uuid::Uuid::new_v4().to_string()),
         };
