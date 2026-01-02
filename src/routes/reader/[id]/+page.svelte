@@ -230,7 +230,8 @@
     
     try {
       book = await libraryApi.getBook(bookId);
-      currentPage = book.current_page;
+      // Clamp current page to valid range (0 to total_pages - 1)
+      currentPage = Math.min(Math.max(0, book.current_page), book.total_pages - 1);
       
       bookSettings = await libraryApi.getBookSettings(bookId);
       bookmarks = await libraryApi.getBookmarks(bookId);
@@ -531,6 +532,9 @@
   }
 
   async function updateBookSetting(key: keyof BookSettings, value: string | boolean) {
+    const previousPageDisplayMode = pageDisplayMode;
+    const previousReadingDirection = readingDirection;
+    
     try {
       const updates: Record<string, string | boolean | null> = {};
       
@@ -552,6 +556,15 @@
       }
       
       bookSettings = await libraryApi.updateBookSettings(bookId, updates);
+      
+      // Scroll to current page when switching to continuous/vertical mode
+      const switchedToContinuous = previousPageDisplayMode !== "continuous" && pageDisplayMode === "continuous";
+      const switchedToVertical = previousReadingDirection !== "vertical" && readingDirection === "vertical";
+      
+      if (switchedToContinuous || switchedToVertical) {
+        await tick();
+        scrollToPage(currentPage);
+      }
     } catch (e) {
       showToastMessage("Failed to update setting", "error");
     }

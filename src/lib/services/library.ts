@@ -231,12 +231,12 @@ export async function updateReadingProgress(
 }
 
 /**
- * Mark a book as completed (sets status and current page to total)
+ * Mark a book as completed (sets status and current page to last page)
  */
 export async function markAsCompleted(book: Book): Promise<Book> {
   return updateBook(book.id, {
     readingStatus: "completed",
-    currentPage: book.total_pages,
+    currentPage: book.total_pages - 1,
   });
 }
 

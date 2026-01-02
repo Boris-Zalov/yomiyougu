@@ -129,10 +129,25 @@ async fn sync_now_impl(app: &AppHandle) -> Result<SyncResult, AppError> {
 
     let drive = DriveSync::with_token(access_token.clone());
     
+    // Read cached sync file ID from database
+    use diesel::prelude::*;
+    use crate::database::get_connection;
+    use crate::schema::sync_state;
+    use crate::database::models::SyncState;
+    
+    let cached_file_id: Option<String> = {
+        let mut conn = get_connection()?;
+        sync_state::table
+            .find(1)
+            .first::<SyncState>(&mut conn)
+            .ok()
+            .and_then(|s| s.sync_file_id)
+    };
+    
     // Download remote snapshot
     log::info!("Downloading remote snapshot...");
-    let remote_snapshot = drive.download_snapshot().await?;
-    let existing_file_id = drive.find_sync_file().await?;
+    let remote_snapshot = drive.download_snapshot(cached_file_id.as_deref()).await?;
+    let existing_file_id = drive.find_sync_file(cached_file_id.as_deref()).await?;
     
     // Merge local and remote
     log::info!("Merging local and remote data...");
@@ -151,10 +166,6 @@ async fn sync_now_impl(app: &AppHandle) -> Result<SyncResult, AppError> {
     }
     
     // Save file ID to local state
-    use diesel::prelude::*;
-    use crate::database::get_connection;
-    use crate::schema::sync_state;
-
     let mut conn = get_connection()?;
     diesel::update(sync_state::table.find(1))
         .set(sync_state::sync_file_id.eq(Some(&file_id)))
