@@ -157,6 +157,7 @@ pub struct NewBook {
     pub file_size: Option<i32>,
     pub file_hash: Option<String>,
     pub title: String,
+    pub current_page: i32,
     pub total_pages: i32,
     pub uuid: Option<String>,
 }
