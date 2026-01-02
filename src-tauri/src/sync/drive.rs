@@ -21,7 +21,16 @@ impl DriveSync {
     }
 
     /// Find the sync file in appData folder, returns file ID if found
-    pub async fn find_sync_file(&self) -> Result<Option<String>, AppError> {
+    /// If a cached_file_id is provided, verifies it still exists before using it
+    pub async fn find_sync_file(&self, cached_file_id: Option<&str>) -> Result<Option<String>, AppError> {
+        if let Some(id) = cached_file_id {
+            if self.verify_file_exists(id).await? {
+                log::info!("Using cached sync file ID: {}", id);
+                return Ok(Some(id.to_string()));
+            }
+            log::info!("Cached sync file ID {} no longer valid, searching...", id);
+        }
+        
         let client = reqwest::Client::new();
         
         let response = client
@@ -61,9 +70,24 @@ impl DriveSync {
         Ok(file_list.files.into_iter().next().map(|f| f.id))
     }
 
+    /// Verify a file ID still exists on Drive
+    async fn verify_file_exists(&self, file_id: &str) -> Result<bool, AppError> {
+        let client = reqwest::Client::new();
+        
+        let response = client
+            .get(format!("{}/files/{}", DRIVE_API_BASE, file_id))
+            .bearer_auth(&self.access_token)
+            .query(&[("fields", "id")])
+            .send()
+            .await
+            .map_err(|e| AppError::sync_failed(format!("Failed to verify file: {}", e)))?;
+
+        Ok(response.status().is_success())
+    }
+
     /// Download the sync snapshot from Google Drive
-    pub async fn download_snapshot(&self) -> Result<Option<SyncSnapshot>, AppError> {
-        let file_id = match self.find_sync_file().await? {
+    pub async fn download_snapshot(&self, cached_file_id: Option<&str>) -> Result<Option<SyncSnapshot>, AppError> {
+        let file_id = match self.find_sync_file(cached_file_id).await? {
             Some(id) => id,
             None => return Ok(None),
         };
