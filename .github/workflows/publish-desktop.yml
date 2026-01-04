@@ -37,8 +37,8 @@ jobs:
         with:
           version: 9
 
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
+      - name: Install Rust nightly
+        uses: dtolnay/rust-toolchain@nightly
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
