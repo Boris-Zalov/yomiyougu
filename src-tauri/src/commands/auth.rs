@@ -432,6 +432,8 @@ async fn exchange_code_for_tokens(
     token.expires_at = expires_at;
     token.email = user_info.as_ref().and_then(|u| u.email.clone());
     token.display_name = user_info.as_ref().and_then(|u| u.name.clone());
+    token.client_id = Some(params.get("client_id").unwrap().clone());
+    token.client_secret = Some(params.get("client_secret").unwrap().clone());
 
     auth::save_token(app, &token).map_err(|e| String::from(e))?;
 
@@ -509,6 +511,8 @@ pub async fn refresh_token_internal(
     new_token.expires_at = expires_at;
     new_token.email = token.email.clone();
     new_token.display_name = token.display_name.clone();
+    new_token.client_id = token.client_id.clone();
+    new_token.client_secret = token.client_secret.clone();
 
     Ok(new_token)
 }

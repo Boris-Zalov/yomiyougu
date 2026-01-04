@@ -479,8 +479,8 @@
       const result = await syncApi.syncNow();
       if (result.success) {
         syncStatusText = `Synced: ${result.books_uploaded}↑ ${result.books_downloaded}↓`;
-        // Reload books in case any were synced
-        await loadBooks();
+        // Reload books and collections in case any were synced
+        await Promise.all([loadBooks(), loadCollections()]);
         // Reload settings and reapply theme in case it changed
         try {
           const settings = await settingsApi.getSettings();

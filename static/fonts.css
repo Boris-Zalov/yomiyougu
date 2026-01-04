@@ -1,0 +1,24 @@
+/* Custom Font Definitions */
+@font-face {
+  font-display: block;
+  font-family: 'Rubik';
+  src: url('/fonts/Rubik/Rubik-VariableFont_wght.ttf') format('truetype');
+  font-weight: 100 900;
+  font-style: normal;
+}
+
+@font-face {
+  font-display: block;
+  font-family: 'Rubik';
+  src: url('/fonts/Rubik/Rubik-Italic-VariableFont_wght.ttf') format('truetype');
+  font-weight: 100 900;
+  font-style: italic;
+}
+
+@font-face {
+  font-display: block;
+  font-family: 'Rampart One';
+  src: url('/fonts/Rampart_One/RampartOne-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+}
