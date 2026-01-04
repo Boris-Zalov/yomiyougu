@@ -98,12 +98,12 @@ async fn sync_now_impl(app: &AppHandle) -> Result<SyncResult, AppError> {
         
         // Refresh the token
         log::info!("Access token expired, attempting refresh...");
-        let client_id = std::env::var("VITE_GOOGLE_CLIENT_ID")
-            .map_err(|_| AppError::config_read_failed("VITE_GOOGLE_CLIENT_ID not set"))?;
-        let client_secret = std::env::var("VITE_GOOGLE_CLIENT_SECRET")
-            .map_err(|_| AppError::config_read_failed("VITE_GOOGLE_CLIENT_SECRET not set"))?;
+        let client_id = token.client_id.as_ref()
+            .ok_or_else(|| AppError::config_read_failed("OAuth client_id not stored - please sign in again"))?;
+        let client_secret = token.client_secret.as_ref()
+            .ok_or_else(|| AppError::config_read_failed("OAuth client_secret not stored - please sign in again"))?;
         
-        match crate::commands::auth::refresh_token_internal(&client_id, &client_secret, &token).await {
+        match crate::commands::auth::refresh_token_internal(client_id, client_secret, &token).await {
             Ok(new_token) => {
                 log::info!(
                     "Token refreshed successfully, new expiration: {:?}",
@@ -286,12 +286,12 @@ async fn download_cloud_book_impl(app: &AppHandle, book_id: i32) -> Result<crate
             return Err(AppError::not_authenticated());
         }
         
-        let client_id = std::env::var("VITE_GOOGLE_CLIENT_ID")
-            .map_err(|_| AppError::config_read_failed("VITE_GOOGLE_CLIENT_ID not set"))?;
-        let client_secret = std::env::var("VITE_GOOGLE_CLIENT_SECRET")
-            .map_err(|_| AppError::config_read_failed("VITE_GOOGLE_CLIENT_SECRET not set"))?;
+        let client_id = token.client_id.as_ref()
+            .ok_or_else(|| AppError::config_read_failed("OAuth client_id not stored - please sign in again"))?;
+        let client_secret = token.client_secret.as_ref()
+            .ok_or_else(|| AppError::config_read_failed("OAuth client_secret not stored - please sign in again"))?;
         
-        match crate::commands::auth::refresh_token_internal(&client_id, &client_secret, &token).await {
+        match crate::commands::auth::refresh_token_internal(client_id, client_secret, &token).await {
             Ok(new_token) => {
                 auth::save_token(app, &new_token)?;
                 new_token.access_token
@@ -311,12 +311,12 @@ async fn download_cloud_book_impl(app: &AppHandle, book_id: i32) -> Result<crate
         .app_data_dir()
         .map_err(|e| AppError::config_read_failed(format!("Failed to get app data dir: {}", e)))?;
     
-    let books_dir = app_data_dir.join("books");
-    std::fs::create_dir_all(&books_dir)
-        .map_err(|e| AppError::sync_failed(format!("Failed to create books directory: {}", e)))?;
+    let library_dir = app_data_dir.join("library");
+    std::fs::create_dir_all(&library_dir)
+        .map_err(|e| AppError::sync_failed(format!("Failed to create library directory: {}", e)))?;
 
     // Use the original filename for the local file
-    let target_path = books_dir.join(&book.filename);
+    let target_path = library_dir.join(&book.filename);
     let target_path_str = target_path.to_string_lossy().to_string();
 
     log::info!("Downloading book to: {}", target_path_str);

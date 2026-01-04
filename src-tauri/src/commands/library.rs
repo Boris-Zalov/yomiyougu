@@ -181,11 +181,11 @@ async fn delete_book_impl(app: &AppHandle, book_id: i32) -> Result<(), AppError>
                 if let Ok(token) = auth::load_token(app) {
                     let access_token = if token.is_expired() {
                         // Try to refresh the token
-                        if let (Ok(client_id), Ok(client_secret)) = (
-                            std::env::var("VITE_GOOGLE_CLIENT_ID"),
-                            std::env::var("VITE_GOOGLE_CLIENT_SECRET"),
+                        if let (Some(client_id), Some(client_secret)) = (
+                            token.client_id.as_ref(),
+                            token.client_secret.as_ref(),
                         ) {
-                            match crate::commands::auth::refresh_token_internal(&client_id, &client_secret, &token).await {
+                            match crate::commands::auth::refresh_token_internal(client_id, client_secret, &token).await {
                                 Ok(new_token) => {
                                     let _ = auth::save_token(app, &new_token);
                                     Some(new_token.access_token)
@@ -196,10 +196,11 @@ async fn delete_book_impl(app: &AppHandle, book_id: i32) -> Result<(), AppError>
                                 }
                             }
                         } else {
+                            log::warn!("OAuth credentials not stored - cannot refresh token for cloud deletion");
                             None
                         }
                     } else {
-                        Some(token.access_token)
+                        Some(token.access_token.clone())
                     };
                     
                     if let Some(access_token) = access_token {

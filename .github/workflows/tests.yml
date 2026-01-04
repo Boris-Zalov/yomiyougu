@@ -60,7 +60,7 @@ jobs:
         continue-on-error: true
 
   frontend-check:
-    name: Frontend Type Check
+    name: Frontend Type Check & Tests
     runs-on: ubuntu-latest
     
     steps:
@@ -84,6 +84,9 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install
+
+      - name: Run tests
+        run: pnpm test
 
       - name: Type check
         run: pnpm check

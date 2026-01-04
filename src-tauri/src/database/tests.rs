@@ -522,6 +522,68 @@ mod database_tests {
 
             assert_eq!(reading_books.len(), 2);
         }
+
+        #[test]
+        fn test_find_book_by_path() {
+            let pool = setup_test_db();
+            let mut conn = pool.get().unwrap();
+            let book = create_test_book(&mut conn, "Find Path Test");
+
+            // Find by exact path - should return the book
+            let found: Option<Book> = books::table
+                .filter(books::file_path.eq(&book.file_path))
+                .first(&mut conn)
+                .optional()
+                .unwrap();
+
+            assert!(found.is_some());
+            assert_eq!(found.unwrap().title, "Find Path Test");
+
+            // Find by non-existent path - should return None
+            let not_found: Option<Book> = books::table
+                .filter(books::file_path.eq("/nonexistent/path.cbz"))
+                .first(&mut conn)
+                .optional()
+                .unwrap();
+
+            assert!(not_found.is_none());
+        }
+
+        #[test]
+        fn test_find_deleted_book_by_path() {
+            let pool = setup_test_db();
+            let mut conn = pool.get().unwrap();
+
+            // Create a book
+            let book = create_test_book(&mut conn, "Deleted Book Test");
+            let path = book.file_path.clone();
+
+            // Soft delete the book
+            diesel::update(books::table.find(book.id))
+                .set(books::deleted_at.eq(Some(chrono::Utc::now().naive_utc())))
+                .execute(&mut conn)
+                .unwrap();
+
+            // Query without deleted_at filter - should find it
+            let found_deleted: Option<Book> = books::table
+                .filter(books::file_path.eq(&path))
+                .first(&mut conn)
+                .optional()
+                .unwrap();
+
+            assert!(found_deleted.is_some());
+            assert!(found_deleted.unwrap().deleted_at.is_some());
+
+            // Query with deleted_at IS NULL filter - should not find it
+            let found_active: Option<Book> = books::table
+                .filter(books::file_path.eq(&path))
+                .filter(books::deleted_at.is_null())
+                .first(&mut conn)
+                .optional()
+                .unwrap();
+
+            assert!(found_active.is_none());
+        }
     }
 
     // ========================================================================
@@ -990,6 +1052,290 @@ mod database_tests {
                 .unwrap();
 
             assert_eq!(favorites.len(), 3);
+        }
+
+        #[test]
+        fn test_sort_books_by_title() {
+            let pool = setup_test_db();
+            let mut conn = pool.get().unwrap();
+
+            let titles = ["Zeta", "Alpha", "Omega", "Beta"];
+            for (i, title) in titles.iter().enumerate() {
+                diesel::insert_into(books::table)
+                    .values(&NewBook {
+                        uuid: test_uuid(),
+                        file_path: format!("/manga/sort{}.cbz", i),
+                        filename: format!("sort{}.cbz", i),
+                        file_size: None,
+                        file_hash: None,
+                        title: title.to_string(),
+                        current_page: 0,
+                        total_pages: 100,
+                    })
+                    .execute(&mut conn)
+                    .unwrap();
+            }
+
+            // Sort ascending
+            let sorted_asc: Vec<Book> = books::table
+                .order(books::title.asc())
+                .load(&mut conn)
+                .unwrap();
+
+            assert_eq!(sorted_asc[0].title, "Alpha");
+            assert_eq!(sorted_asc[3].title, "Zeta");
+
+            // Sort descending
+            let sorted_desc: Vec<Book> = books::table
+                .order(books::title.desc())
+                .load(&mut conn)
+                .unwrap();
+
+            assert_eq!(sorted_desc[0].title, "Zeta");
+            assert_eq!(sorted_desc[3].title, "Alpha");
+        }
+
+        #[test]
+        fn test_sort_books_by_added_at() {
+            let pool = setup_test_db();
+            let mut conn = pool.get().unwrap();
+
+            let now = chrono::Utc::now().naive_utc();
+
+            for i in 0..3 {
+                let book: Book = diesel::insert_into(books::table)
+                    .values(&NewBook {
+                        uuid: test_uuid(),
+                        file_path: format!("/manga/added{}.cbz", i),
+                        filename: format!("added{}.cbz", i),
+                        file_size: None,
+                        file_hash: None,
+                        title: format!("Added Book {}", i),
+                        current_page: 0,
+                        total_pages: 100,
+                    })
+                    .returning(Book::as_returning())
+                    .get_result(&mut conn)
+                    .unwrap();
+
+                // Set different added_at times
+                let added_time = now - chrono::Duration::days(i as i64);
+                diesel::update(books::table.find(book.id))
+                    .set(books::added_at.eq(added_time))
+                    .execute(&mut conn)
+                    .unwrap();
+            }
+
+            // Most recently added first
+            let sorted: Vec<Book> = books::table
+                .order(books::added_at.desc())
+                .load(&mut conn)
+                .unwrap();
+
+            assert_eq!(sorted[0].title, "Added Book 0");
+            assert_eq!(sorted[2].title, "Added Book 2");
+        }
+
+        #[test]
+        fn test_get_last_read_book() {
+            let pool = setup_test_db();
+            let mut conn = pool.get().unwrap();
+
+            let now = chrono::Utc::now().naive_utc();
+
+            for i in 0..3 {
+                let book: Book = diesel::insert_into(books::table)
+                    .values(&NewBook {
+                        uuid: test_uuid(),
+                        file_path: format!("/manga/lastread{}.cbz", i),
+                        filename: format!("lastread{}.cbz", i),
+                        file_size: None,
+                        file_hash: None,
+                        title: format!("Last Read Test {}", i),
+                        current_page: 0,
+                        total_pages: 100,
+                    })
+                    .returning(Book::as_returning())
+                    .get_result(&mut conn)
+                    .unwrap();
+
+                let read_time = now - chrono::Duration::hours(i as i64);
+                diesel::update(books::table.find(book.id))
+                    .set(books::last_read_at.eq(Some(read_time)))
+                    .execute(&mut conn)
+                    .unwrap();
+            }
+
+            // Get the most recently read book
+            let last_read: Option<Book> = books::table
+                .filter(books::last_read_at.is_not_null())
+                .order(books::last_read_at.desc())
+                .first(&mut conn)
+                .optional()
+                .unwrap();
+
+            assert!(last_read.is_some());
+            assert_eq!(last_read.unwrap().title, "Last Read Test 0");
+        }
+
+        #[test]
+        fn test_get_recently_read_books() {
+            let pool = setup_test_db();
+            let mut conn = pool.get().unwrap();
+
+            let now = chrono::Utc::now().naive_utc();
+
+            for i in 0..10 {
+                let book: Book = diesel::insert_into(books::table)
+                    .values(&NewBook {
+                        uuid: test_uuid(),
+                        file_path: format!("/manga/recent{}.cbz", i),
+                        filename: format!("recent{}.cbz", i),
+                        file_size: None,
+                        file_hash: None,
+                        title: format!("Recent Book {}", i),
+                        current_page: 0,
+                        total_pages: 100,
+                    })
+                    .returning(Book::as_returning())
+                    .get_result(&mut conn)
+                    .unwrap();
+
+                let read_time = now - chrono::Duration::hours(i as i64);
+                diesel::update(books::table.find(book.id))
+                    .set(books::last_read_at.eq(Some(read_time)))
+                    .execute(&mut conn)
+                    .unwrap();
+            }
+
+            // Get 5 most recently read
+            let recent: Vec<Book> = books::table
+                .filter(books::last_read_at.is_not_null())
+                .order(books::last_read_at.desc())
+                .limit(5)
+                .load(&mut conn)
+                .unwrap();
+
+            assert_eq!(recent.len(), 5);
+            assert_eq!(recent[0].title, "Recent Book 0");
+            assert_eq!(recent[4].title, "Recent Book 4");
+        }
+
+        #[test]
+        fn test_get_stale_books() {
+            let pool = setup_test_db();
+            let mut conn = pool.get().unwrap();
+
+            let now = chrono::Utc::now().naive_utc();
+            let one_week_ago = now - chrono::Duration::weeks(1);
+
+            for i in 0..5 {
+                let book: Book = diesel::insert_into(books::table)
+                    .values(&NewBook {
+                        uuid: test_uuid(),
+                        file_path: format!("/manga/stale{}.cbz", i),
+                        filename: format!("stale{}.cbz", i),
+                        file_size: None,
+                        file_hash: None,
+                        title: format!("Stale Book {}", i),
+                        current_page: 10, // Started reading
+                        total_pages: 100,
+                    })
+                    .returning(Book::as_returning())
+                    .get_result(&mut conn)
+                    .unwrap();
+
+                // First 3 books read recently, last 2 read long ago
+                let read_time = if i < 3 {
+                    now - chrono::Duration::days(i as i64)
+                } else {
+                    now - chrono::Duration::weeks(2 + i as i64)
+                };
+
+                diesel::update(books::table.find(book.id))
+                    .set((
+                        books::last_read_at.eq(Some(read_time)),
+                        books::reading_status.eq("reading"),
+                    ))
+                    .execute(&mut conn)
+                    .unwrap();
+            }
+
+            // Get books not read for more than a week and still in "reading" status
+            let stale: Vec<Book> = books::table
+                .filter(books::last_read_at.lt(one_week_ago))
+                .filter(books::reading_status.eq("reading"))
+                .order(books::last_read_at.asc()) // Oldest first
+                .load(&mut conn)
+                .unwrap();
+
+            assert_eq!(stale.len(), 2);
+        }
+
+        #[test]
+        fn test_add_remove_book_from_collection() {
+            let pool = setup_test_db();
+            let mut conn = pool.get().unwrap();
+
+            let collection: Collection = diesel::insert_into(collections::table)
+                .values(&NewCollection {
+                    uuid: test_uuid(),
+                    name: "Test Add/Remove".to_string(),
+                    description: None,
+                })
+                .returning(Collection::as_returning())
+                .get_result(&mut conn)
+                .unwrap();
+
+            let book: Book = diesel::insert_into(books::table)
+                .values(&NewBook {
+                    uuid: test_uuid(),
+                    file_path: "/manga/addremove.cbz".to_string(),
+                    filename: "addremove.cbz".to_string(),
+                    file_size: None,
+                    file_hash: None,
+                    title: "Add Remove Test".to_string(),
+                    current_page: 0,
+                    total_pages: 100,
+                })
+                .returning(Book::as_returning())
+                .get_result(&mut conn)
+                .unwrap();
+
+            // Add book to collection
+            diesel::insert_into(book_collections::table)
+                .values(&NewBookCollection {
+                    uuid: test_uuid(),
+                    book_id: book.id,
+                    collection_id: collection.id,
+                })
+                .execute(&mut conn)
+                .unwrap();
+
+            let count: i64 = book_collections::table
+                .filter(book_collections::book_id.eq(book.id))
+                .filter(book_collections::collection_id.eq(collection.id))
+                .count()
+                .get_result(&mut conn)
+                .unwrap();
+            assert_eq!(count, 1);
+
+            // Remove book from collection
+            diesel::delete(
+                book_collections::table
+                    .filter(book_collections::book_id.eq(book.id))
+                    .filter(book_collections::collection_id.eq(collection.id)),
+            )
+            .execute(&mut conn)
+            .unwrap();
+
+            let count_after: i64 = book_collections::table
+                .filter(book_collections::book_id.eq(book.id))
+                .filter(book_collections::collection_id.eq(collection.id))
+                .count()
+                .get_result(&mut conn)
+                .unwrap();
+            assert_eq!(count_after, 0);
         }
     }
 }

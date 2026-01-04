@@ -257,7 +257,7 @@
   {#if totalBooks > 0 && readingCount === 0}
     <!-- Has books but nothing is being read -->
     <section>
-      <Card class="text-center py-8">
+      <Card class="text-center p-8">
         <P class="text-gray-500 dark:text-gray-400 mb-4">
           You have {totalBooks} {totalBooks === 1 ? 'book' : 'books'} waiting to be read!
         </P>

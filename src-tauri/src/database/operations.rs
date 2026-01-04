@@ -52,7 +52,7 @@ pub fn get_all_collections() -> Result<Vec<CollectionWithCount>, AppError> {
     debug!("Fetching all collections with book counts");
     let mut conn = establish_connection()?;
 
-    let collections_list = collections::table
+    let collections_list: Vec<Collection> = collections::table
         .filter(collections::deleted_at.is_null())
         .select(Collection::as_select())
         .load(&mut conn)
@@ -62,24 +62,27 @@ pub fn get_all_collections() -> Result<Vec<CollectionWithCount>, AppError> {
                 format!("Failed to load collections: {}", e),
             )
         })?;
+    let counts: Vec<(i32, i64)> = book_collections::table
+        .inner_join(books::table)
+        .filter(book_collections::deleted_at.is_null())
+        .filter(books::deleted_at.is_null())
+        .group_by(book_collections::collection_id)
+        .select((book_collections::collection_id, diesel::dsl::count(book_collections::book_id)))
+        .load(&mut conn)
+        .unwrap_or_default();
 
-    // Get book counts for each collection via junction table (exclude deleted books)
-    let mut result = Vec::new();
-    for collection in collections_list {
-        let count = book_collections::table
-            .inner_join(books::table)
-            .filter(book_collections::collection_id.eq(collection.id))
-            .filter(book_collections::deleted_at.is_null())
-            .filter(books::deleted_at.is_null())
-            .count()
-            .get_result::<i64>(&mut conn)
-            .unwrap_or(0);
+    let count_map: std::collections::HashMap<i32, i64> = counts.into_iter().collect();
 
-        result.push(CollectionWithCount {
-            collection,
-            book_count: count,
-        });
-    }
+    let result: Vec<CollectionWithCount> = collections_list
+        .into_iter()
+        .map(|collection| {
+            let book_count = *count_map.get(&collection.id).unwrap_or(&0);
+            CollectionWithCount {
+                collection,
+                book_count,
+            }
+        })
+        .collect();
 
     info!("Retrieved {} collections", result.len());
     Ok(result)
@@ -266,15 +269,38 @@ pub fn get_all_books(
             )
         })?;
 
-    // Load collection names and IDs for each book
+    // Batch load all book-collection associations
+    let book_ids: Vec<i32> = books_list.iter().map(|b| b.id).collect();
+    
+    let all_book_collections: Vec<(i32, i32, String)> = if !book_ids.is_empty() {
+        book_collections::table
+            .inner_join(collections::table)
+            .filter(book_collections::book_id.eq_any(&book_ids))
+            .filter(book_collections::deleted_at.is_null())
+            .filter(collections::deleted_at.is_null())
+            .select((book_collections::book_id, collections::id, collections::name))
+            .load(&mut conn)
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+
+    // Build a map of book_id -> Vec<(collection_id, collection_name)>
+    let mut collections_map: std::collections::HashMap<i32, Vec<(i32, String)>> = 
+        std::collections::HashMap::new();
+    for (book_id, coll_id, coll_name) in all_book_collections {
+        collections_map
+            .entry(book_id)
+            .or_default()
+            .push((coll_id, coll_name));
+    }
+
+    // Build result with O(1) collection lookup
     let result: Vec<BookWithDetails> = books_list
         .into_iter()
         .map(|book| {
-            let book_collections_data: Vec<(i32, String)> = book_collections::table
-                .inner_join(collections::table)
-                .filter(book_collections::book_id.eq(book.id))
-                .select((collections::id, collections::name))
-                .load(&mut conn)
+            let book_collections_data = collections_map
+                .remove(&book.id)
                 .unwrap_or_default();
 
             let collection_ids: Vec<i32> =
@@ -400,8 +426,25 @@ pub fn find_deleted_book_by_hash(file_hash: &str) -> Result<Option<Book>, AppErr
         })
 }
 
-/// Restore a soft-deleted book with a new file path
-pub fn restore_deleted_book(book_id: i32, new_file_path: &str) -> Result<Book, AppError> {
+/// Check if a book with the given file path exists (includes soft-deleted due to UNIQUE constraint)
+pub fn find_book_by_path(file_path: &str) -> Result<Option<Book>, AppError> {
+    let mut conn = establish_connection()?;
+
+    books::table
+        .filter(books::file_path.eq(file_path))
+        .select(Book::as_select())
+        .first(&mut conn)
+        .optional()
+        .map_err(|e| {
+            AppError::new(
+                ErrorCode::DatabaseQueryFailed,
+                format!("Failed to check for path conflict: {}", e),
+            )
+        })
+}
+
+/// Restore a soft-deleted book with a new file path and filename
+pub fn restore_deleted_book(book_id: i32, new_file_path: &str, new_filename: &str) -> Result<Book, AppError> {
     info!("Restoring soft-deleted book ID: {} with path: {}", book_id, new_file_path);
     let mut conn = establish_connection()?;
 
@@ -411,6 +454,7 @@ pub fn restore_deleted_book(book_id: i32, new_file_path: &str) -> Result<Book, A
         .set((
             books::deleted_at.eq(None::<chrono::NaiveDateTime>),
             books::file_path.eq(new_file_path),
+            books::filename.eq(new_filename),
             books::updated_at.eq(now),
         ))
         .returning(Book::as_returning())
@@ -832,26 +876,30 @@ pub fn import_book_from_archive(
         let mut dest_path = library_dir.join(&archive_filename);
 
         // Handle filename conflicts by appending a number
-        if dest_path.exists() {
-            let stem = dest_path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("archive")
-                .to_string();
-            let ext = dest_path
-                .extension()
-                .and_then(|s| s.to_str())
-                .unwrap_or("cbz")
-                .to_string();
+        // Check both filesystem and database to avoid UNIQUE constraint violations
+        let stem = dest_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("archive")
+            .to_string();
+        let ext = dest_path
+            .extension()
+            .and_then(|s| s.to_str())
+            .unwrap_or("cbz")
+            .to_string();
 
-            let mut counter = 1;
-            loop {
-                dest_path = library_dir.join(format!("{}_{}.{}", stem, counter, ext));
-                if !dest_path.exists() {
-                    break;
-                }
-                counter += 1;
+        let mut counter = 0;
+        loop {
+            let path_str = dest_path.to_string_lossy().to_string();
+            let file_exists = dest_path.exists();
+            let db_exists = find_book_by_path(&path_str)?.is_some();
+            
+            if !file_exists && !db_exists {
+                break;
             }
+            
+            counter += 1;
+            dest_path = library_dir.join(format!("{}_{}.{}", stem, counter, ext));
         }
 
         // Copy the file to the library directory
@@ -885,7 +933,7 @@ pub fn import_book_from_archive(
     // Either restore deleted book or create new one
     let book = if let Some(deleted) = deleted_book {
         info!("Restoring previously deleted book: {} (ID: {})", deleted.title, deleted.id);
-        restore_deleted_book(deleted.id, &effective_path.to_string_lossy())?
+        restore_deleted_book(deleted.id, &effective_path.to_string_lossy(), &effective_filename)?
     } else {
         // Create the book entry
         let new_book = NewBook {

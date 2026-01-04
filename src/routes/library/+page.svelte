@@ -479,8 +479,8 @@
       const result = await syncApi.syncNow();
       if (result.success) {
         syncStatusText = `Synced: ${result.books_uploaded}↑ ${result.books_downloaded}↓`;
-        // Reload books in case any were synced
-        await loadBooks();
+        // Reload books and collections in case any were synced
+        await Promise.all([loadBooks(), loadCollections()]);
         // Reload settings and reapply theme in case it changed
         try {
           const settings = await settingsApi.getSettings();
@@ -520,20 +520,20 @@
     <!-- Search and Sync Row -->
     <div class="mb-6 flex items-center gap-3">
       <Search
-        clearable
-        clearableOnClick={() => { search = ""; }}
-        class="flex-1"
-        bind:value={search}
-        placeholder="Search books and collections..."
-      ></Search>
-      
-      <Button
-        id="sync-btn"
-        onclick={handleSync}
-        disabled={isSyncing}
-        color="alternative"
-        class="shrink-0"
-      >
+          clearable
+          clearableOnClick={() => { search = ""; }}
+          class="flex-1"
+          bind:value={search}
+          placeholder="Search books and collections..."
+        ></Search>
+        
+        <Button
+          id="sync-btn"
+          onclick={handleSync}
+          disabled={isSyncing}
+          color="alternative"
+          class="shrink-0"
+        >
         {#if isSyncing}
           <Spinner size="4" class="mr-2" />
         {:else}
