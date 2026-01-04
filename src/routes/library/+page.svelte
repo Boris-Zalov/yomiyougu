@@ -520,20 +520,20 @@
     <!-- Search and Sync Row -->
     <div class="mb-6 flex items-center gap-3">
       <Search
-          clearable
-          clearableOnClick={() => { search = ""; }}
-          class="flex-1"
-          bind:value={search}
-          placeholder="Search books and collections..."
-        ></Search>
-        
-        <Button
-          id="sync-btn"
-          onclick={handleSync}
-          disabled={isSyncing}
-          color="alternative"
-          class="shrink-0"
-        >
+        clearable
+        clearableOnClick={() => { search = ""; }}
+        class="flex-1"
+        bind:value={search}
+        placeholder="Search books and collections..."
+      ></Search>
+      
+      <Button
+        id="sync-btn"
+        onclick={handleSync}
+        disabled={isSyncing}
+        color="alternative"
+        class="shrink-0"
+      >
         {#if isSyncing}
           <Spinner size="4" class="mr-2" />
         {:else}
