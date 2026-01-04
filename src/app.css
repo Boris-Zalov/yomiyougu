@@ -11,6 +11,8 @@
    THEME CONFIGURATION
    ============================================================================ */
 @theme {
+  --font-family-sans: 'Rubik', ui-sans-serif, system-ui, sans-serif;
+  --font-family-display: 'Rampart One', cursive;
   /* Primary brand color - warm red/coral */
   --color-primary-50: #fff0f1;
   --color-primary-100: #ffe4e6;
@@ -44,13 +46,25 @@
 /* ============================================================================
    BASE STYLES
    ============================================================================ */
+html, body, #app, * {
+  font-family: 'Rubik', ui-sans-serif, system-ui, sans-serif !important;
+}
+
+.font-display {
+  font-family: 'Rampart One', cursive !important;
+}
+
+.font-normal, .font-bold, .font-semibold, .font-medium, .font-light, .font-thin, .font-italic {
+  font-family: 'Rubik', ui-sans-serif, system-ui, sans-serif !important;
+}
+
 @layer base {
   html,
   body {
     @apply h-full w-full overscroll-none;
     @apply bg-surface-light text-slate-900;
     @apply dark:bg-surface-dark dark:text-slate-100;
-    @apply font-sans antialiased;
+    @apply antialiased;
     @apply transition-colors duration-200;
     position: fixed;
     width: 100%;

@@ -14,3 +14,7 @@ src-tauri/gen
 .vscode
 *.db
 vite-profile-0.cpuprofile
+
+keystore.properties
+*.jks
+*.keystore

@@ -54,7 +54,7 @@
   class="fixed inset-0 z-50 flex flex-col items-center justify-center touch-none overscroll-none bg-surface-dark"
   out:fade={{ duration: 500 }}
 >
-  <h1 class="text-6xl font-black tracking-widest text-primary-700 select-none">
+  <h1 class="text-6xl font-black tracking-widest text-primary-700 select-none font-display">
     {visibleText}<span class="animate-pulse text-white">|</span>
   </h1>
 </div>
