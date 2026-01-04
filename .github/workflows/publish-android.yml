@@ -47,6 +47,9 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install
 
+      - name: Initialize Android project
+        run: pnpm tauri android init
+
       - name: Setup Android signing
         run: |
           cd src-tauri/gen/android
