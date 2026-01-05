@@ -27,7 +27,7 @@
 
 	let showSuccessToast = $state(false);
 	let showErrorToast = $state(false);
-	let errorMessage = $state("");
+	let _errorMessage = $state("");
 	let addedCount = $state(0);
 
 	// Books not already in this collection
@@ -103,7 +103,7 @@
 			}, 1500);
 		} catch (error) {
 			console.error("Failed to add books:", error);
-			errorMessage = String(error);
+			_errorMessage = String(error);
 			showErrorToast = true;
 		} finally {
 			isAdding = false;

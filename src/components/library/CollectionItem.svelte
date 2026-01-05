@@ -20,7 +20,7 @@
 		ondelete?.(collection);
 	}
 
-	function handleEdit(e: Event) {
+	function _handleEdit(e: Event) {
 		e.preventDefault();
 		e.stopPropagation();
 		// Navigate will happen via the link

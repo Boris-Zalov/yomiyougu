@@ -74,7 +74,7 @@
 	let pendingBook = $state<BookWithDetails | null>(null);
 	let isDownloading = $state(false);
 
-	function formatLastRead(dateStr: string | null): string {
+	function _formatLastRead(dateStr: string | null): string {
 		if (!dateStr) return "Not started";
 		const date = new Date(dateStr);
 		const now = new Date();

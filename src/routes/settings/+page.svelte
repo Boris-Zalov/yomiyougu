@@ -20,7 +20,7 @@
 	import { SettingsSkeleton } from "$skeletons";
 
 	let categories = $state<SettingCategory[]>([]);
-	let originalCategories = $state<SettingCategory[]>([]);
+	let _originalCategories = $state<SettingCategory[]>([]);
 	let pendingChanges = $state<Map<string, SettingValue>>(new Map());
 	let isLoading = $state(true);
 	let isSaving = $state(false);

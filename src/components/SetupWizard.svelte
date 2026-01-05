@@ -13,8 +13,6 @@
 		P,
 		Spinner,
 		Modal,
-		List,
-		Li,
 		A,
 	} from "flowbite-svelte";
 	import {

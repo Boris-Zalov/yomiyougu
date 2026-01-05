@@ -87,7 +87,7 @@
 
 	// Scroll container for continuous mode
 	let scrollContainer: HTMLDivElement | null = $state(null);
-	let isScrolling = $state(false);
+	let _isScrolling = $state(false);
 	let scrollTimeout: ReturnType<typeof setTimeout> | null = null;
 
 	// Computed values
@@ -108,7 +108,7 @@
 	});
 
 	// Page step for navigation (2 for double mode, 1 otherwise)
-	let pageStep = $derived(isDouble ? 2 : 1);
+	let _pageStep = $derived(isDouble ? 2 : 1);
 
 	let pageDisplayText = $derived(() => {
 		if (isDouble && secondPageIndex() !== null) {
@@ -166,14 +166,14 @@
 	function handleContinuousScroll() {
 		if (!scrollContainer || !isContinuous) return;
 
-		isScrolling = true;
+		_isScrolling = true;
 
 		if (scrollTimeout) {
 			clearTimeout(scrollTimeout);
 		}
 
 		scrollTimeout = setTimeout(async () => {
-			isScrolling = false;
+			_isScrolling = false;
 
 			const containerRect = scrollContainer!.getBoundingClientRect();
 			const containerCenter = containerRect.top + containerRect.height / 2;
@@ -466,7 +466,7 @@
 				book.is_favorite ? "Added to favorites" : "Removed from favorites",
 				"success"
 			);
-		} catch (e) {
+		} catch (_e) {
 			showToastMessage("Failed to update favorite", "error");
 		}
 	}
@@ -515,7 +515,7 @@
 			}
 			showBookmarkModal = false;
 			editingBookmark = null;
-		} catch (e) {
+		} catch (_e) {
 			showToastMessage(
 				editingBookmark ? "Failed to update bookmark" : "Failed to create bookmark",
 				"error"
@@ -528,7 +528,7 @@
 			await libraryApi.deleteBookmark(bookmark.id);
 			bookmarks = bookmarks.filter((b) => b.id !== bookmark.id);
 			showToastMessage("Bookmark deleted", "success");
-		} catch (e) {
+		} catch (_e) {
 			showToastMessage("Failed to delete bookmark", "error");
 		}
 	}
@@ -587,7 +587,7 @@
 				await tick();
 				scrollToPage(currentPage);
 			}
-		} catch (e) {
+		} catch (_e) {
 			showToastMessage("Failed to update setting", "error");
 		}
 	}
@@ -856,7 +856,11 @@
 								class="p-2 rounded-full hover:bg-black/20 transition-colors disabled:opacity-30"
 								onclick={(e) => {
 									e.stopPropagation();
-									readingDirection === "rtl" ? nextPage() : prevPage();
+									if (readingDirection === "rtl") {
+										nextPage();
+									} else {
+										prevPage();
+									}
 								}}
 								disabled={readingDirection === "rtl" ? isAtLastPage() : isAtFirstPage}
 								aria-label={readingDirection === "rtl" ? "Next page" : "Previous page"}
@@ -878,7 +882,11 @@
 								class="p-2 rounded-full hover:bg-black/20 transition-colors disabled:opacity-30"
 								onclick={(e) => {
 									e.stopPropagation();
-									readingDirection === "rtl" ? prevPage() : nextPage();
+									if (readingDirection === "rtl") {
+										prevPage();
+									} else {
+										nextPage();
+									}
 								}}
 								disabled={readingDirection === "rtl" ? isAtFirstPage : isAtLastPage()}
 								aria-label={readingDirection === "rtl" ? "Previous page" : "Next page"}
@@ -1059,7 +1067,11 @@
 						class="fixed top-1/2 left-4 -translate-y-1/2 p-3 rounded-full bg-black/50 hover:bg-black/70 transition-colors disabled:opacity-30 z-50"
 						onclick={(e) => {
 							e.stopPropagation();
-							readingDirection === "rtl" ? nextPage() : prevPage();
+							if (readingDirection === "rtl") {
+								nextPage();
+							} else {
+								prevPage();
+							}
 						}}
 						disabled={readingDirection === "rtl" ? isAtLastPage() : isAtFirstPage}
 						aria-label={readingDirection === "rtl" ? "Next page" : "Previous page"}
@@ -1070,7 +1082,11 @@
 						class="fixed top-1/2 right-4 -translate-y-1/2 p-3 rounded-full bg-black/50 hover:bg-black/70 transition-colors disabled:opacity-30 z-50"
 						onclick={(e) => {
 							e.stopPropagation();
-							readingDirection === "rtl" ? prevPage() : nextPage();
+							if (readingDirection === "rtl") {
+								prevPage();
+							} else {
+								nextPage();
+							}
 						}}
 						disabled={readingDirection === "rtl" ? isAtFirstPage : isAtLastPage()}
 						aria-label={readingDirection === "rtl" ? "Previous page" : "Next page"}
