@@ -139,11 +139,12 @@ impl Book {
     }
 
     /// Calculate reading progress as percentage
+    /// Note: current_page is 0-indexed, 1 is added for calculation
     pub fn progress(&self) -> f32 {
         if self.total_pages == 0 {
             0.0
         } else {
-            (self.current_page as f32 / self.total_pages as f32) * 100.0
+            ((self.current_page + 1) as f32 / self.total_pages as f32) * 100.0
         }
     }
 }

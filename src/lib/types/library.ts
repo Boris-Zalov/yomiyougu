@@ -155,8 +155,9 @@ export function getPagePath(bookId: number, pageNumber: number): string {
 
 /**
  * Calculate reading progress percentage
+ * Note: current_page is 0-indexed, so 1 is added for display
  */
 export function calculateProgress(book: Book): number {
 	if (book.total_pages === 0) return 0;
-	return Math.round((book.current_page / book.total_pages) * 100);
+	return Math.round(((book.current_page + 1) / book.total_pages) * 100);
 }

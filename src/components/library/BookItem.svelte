@@ -171,7 +171,7 @@
                 
                 {#if book.total_pages > 0}
                     <span class="text-[10px] font-medium text-gray-600 dark:text-gray-300">
-                        {book.current_page}/{book.total_pages}
+                        {book.current_page + 1}/{book.total_pages}
                     </span>
                 {/if}
             </div>

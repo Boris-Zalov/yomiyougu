@@ -308,12 +308,14 @@ mod database_tests {
             let mut conn = pool.get().unwrap();
 
             let mut book = create_test_book(&mut conn, "Progress Calc Test");
-            book.current_page = 25;
+            // current_page is 0-indexed, so page 24 means we've read 25 pages
+            book.current_page = 24;
             book.total_pages = 100;
 
             assert_eq!(book.progress(), 25.0);
 
-            book.current_page = 100;
+            // On the last page (index 99 for 100 pages)
+            book.current_page = 99;
             assert_eq!(book.progress(), 100.0);
 
             book.total_pages = 0;

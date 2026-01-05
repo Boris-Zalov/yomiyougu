@@ -200,12 +200,17 @@
       });
       
       if (closestPage !== currentPage) {
+        // Capture values before async call to avoid race conditions
+        const pageToSave = closestPage;
+        const totalPagesToCheck = totalPages;
+        const currentBook = book;
+        
         currentPage = closestPage;
         try {
-          await libraryApi.updateReadingProgress(bookId, currentPage);
+          await libraryApi.updateReadingProgress(bookId, pageToSave);
           
-          if (currentPage === totalPages - 1 && book) {
-            await libraryApi.markAsCompleted(book);
+          if (pageToSave === totalPagesToCheck - 1 && currentBook) {
+            await libraryApi.markAsCompleted(currentBook);
           }
         } catch (e) {
           console.error("Failed to save progress:", e);
@@ -303,16 +308,23 @@
     
     isImageLoading = true;
     currentPage = pageNum;
+    
+    // Capture values for the async save to avoid race conditions with reactive state
+    const pageToSave = pageNum;
+    const totalPagesToCheck = totalPages;
+    const isDoubleMode = isDouble;
+    const currentBook = book;
+    
     const savePromise = (async () => {
       try {
-        await libraryApi.updateReadingProgress(bookId, currentPage);
+        await libraryApi.updateReadingProgress(bookId, pageToSave);
         
         // Check if completed (last page or last spread)
-        const isAtEnd = isDouble 
-          ? currentPage >= totalPages - 2 
-          : currentPage === totalPages - 1;
-        if (isAtEnd && book) {
-          await libraryApi.markAsCompleted(book);
+        const isAtEnd = isDoubleMode 
+          ? pageToSave >= totalPagesToCheck - 2 
+          : pageToSave === totalPagesToCheck - 1;
+        if (isAtEnd && currentBook) {
+          await libraryApi.markAsCompleted(currentBook);
         }
       } catch (e) {
         console.error("Failed to save progress:", e);
@@ -516,16 +528,18 @@
   }
 
   async function goToBookmark(bookmark: Bookmark) {
+    const pageToSave = bookmark.page;
+    
     if (isContinuous) {
-      scrollToPage(bookmark.page);
-      currentPage = bookmark.page;
+      scrollToPage(pageToSave);
+      currentPage = pageToSave;
       try {
-        await libraryApi.updateReadingProgress(bookId, currentPage);
+        await libraryApi.updateReadingProgress(bookId, pageToSave);
       } catch (e) {
         console.error("Failed to save progress:", e);
       }
     } else {
-      goToPage(bookmark.page);
+      goToPage(pageToSave);
     }
     showBookmarkDrawer = false;
     showOverlay = false;
@@ -593,7 +607,7 @@
     if (isContinuous) {
       scrollToPage(targetPage);
       currentPage = targetPage;
-      libraryApi.updateReadingProgress(bookId, currentPage).catch(console.error);
+      libraryApi.updateReadingProgress(bookId, targetPage).catch(console.error);
     } else {
       goToPage(targetPage);
     }
