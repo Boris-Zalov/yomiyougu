@@ -34,7 +34,7 @@
     );
     return readingBooks
       .sort((a, b) => new Date(b.last_read_at!).getTime() - new Date(a.last_read_at!).getTime())
-      .slice(0, 10);
+      .slice(0, 5);
   });
 
   // Books not read in a while (more than 7 days)
