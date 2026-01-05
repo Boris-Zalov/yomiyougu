@@ -3,11 +3,11 @@
  */
 
 declare global {
-  interface Window {
-    AndroidFullscreen?: {
-      setFullscreen(enabled: boolean): void;
-    };
-  }
+	interface Window {
+		AndroidFullscreen?: {
+			setFullscreen(enabled: boolean): void;
+		};
+	}
 }
 
 /**
@@ -15,7 +15,7 @@ declare global {
  * Hides the status bar and navigation bar
  */
 export function setFullscreen(enabled: boolean): void {
-  if (window.AndroidFullscreen) {
-    window.AndroidFullscreen.setFullscreen(enabled);
-  }
+	if (window.AndroidFullscreen) {
+		window.AndroidFullscreen.setFullscreen(enabled);
+	}
 }

@@ -1,24 +1,22 @@
 {
-  "$schema": "../gen/schemas/desktop-schema.json",
-  "identifier": "default",
-  "description": "Capability for the main window",
-  "windows": [
-    "main"
-  ],
-  "permissions": [
-    "core:default",
-    "opener:default",
-    "os:default",
-    "dialog:default",
-    "fs:default",
-    "fs:allow-read",
-    "fs:read-all",
-    "fs:allow-app-read",
-    "fs:allow-app-write",
-    "fs:allow-appcache-read",
-    "fs:allow-appcache-write",
-    "fs:allow-appdata-read",
-    "fs:allow-appdata-write",
-    "store:default"
-  ]
+	"$schema": "../gen/schemas/desktop-schema.json",
+	"identifier": "default",
+	"description": "Capability for the main window",
+	"windows": ["main"],
+	"permissions": [
+		"core:default",
+		"opener:default",
+		"os:default",
+		"dialog:default",
+		"fs:default",
+		"fs:allow-read",
+		"fs:read-all",
+		"fs:allow-app-read",
+		"fs:allow-app-write",
+		"fs:allow-appcache-read",
+		"fs:allow-appcache-write",
+		"fs:allow-appdata-read",
+		"fs:allow-appdata-write",
+		"store:default"
+	]
 }

@@ -6,7 +6,7 @@
 /**
  * Reading status enum matching Rust ReadingStatus
  */
-export type ReadingStatus = 'unread' | 'reading' | 'completed' | 'on_hold' | 'dropped';
+export type ReadingStatus = "unread" | "reading" | "completed" | "on_hold" | "dropped";
 
 /**
  * Interface mirroring the Rust 'Book' struct.
@@ -105,7 +105,7 @@ export interface ImportResult {
  */
 export function isRarFormat(book: Book | BookWithDetails): boolean {
 	const filename = book.filename.toLowerCase();
-	return filename.endsWith('.rar') || filename.endsWith('.cbr');
+	return filename.endsWith(".rar") || filename.endsWith(".cbr");
 }
 
 /**
@@ -126,10 +126,10 @@ export function getIsAndroid(): boolean {
 function getComicProtocolPrefix(): string {
 	// On Android, use http://comic.localhost format
 	if (cachedIsAndroid === true) {
-		return 'http://comic.localhost';
+		return "http://comic.localhost";
 	}
 	// On desktop (macOS/Linux), use comic://localhost format
-	return 'comic://localhost';
+	return "comic://localhost";
 }
 
 /**

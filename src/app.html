@@ -1,26 +1,49 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <link rel="icon" href="%sveltekit.assets%/favicon.png" />
-    <!-- Preload fonts for better performance -->
-    <link rel="preload" href="/fonts/Rubik/Rubik-VariableFont_wght.ttf" as="font" type="font/ttf" crossorigin="anonymous" />
-    <link rel="preload" href="/fonts/Rampart_One/RampartOne-Regular.ttf" as="font" type="font/ttf" crossorigin="anonymous" />
-    <link rel="stylesheet" href="/fonts.css" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-    <title>Yomiyougu</title>
-    <style>
-      /* Override all fonts globally - loaded before any other styles */
-      *, *::before, *::after {
-        font-family: 'Rubik', ui-sans-serif, system-ui, -apple-system, sans-serif !important;
-      }
-      .font-display, .font-display * {
-        font-family: 'Rampart One', cursive !important;
-      }
-    </style>
-    %sveltekit.head%
-  </head>
-  <body data-sveltekit-preload-data="hover">
-    <div id="app">%sveltekit.body%</div>
-  </body>
+	<head>
+		<meta charset="utf-8" />
+		<link rel="icon" href="%sveltekit.assets%/favicon.png" />
+		<!-- Preload fonts for better performance -->
+		<link
+			rel="preload"
+			href="/fonts/Rubik/Rubik-VariableFont_wght.ttf"
+			as="font"
+			type="font/ttf"
+			crossorigin="anonymous"
+		/>
+		<link
+			rel="preload"
+			href="/fonts/Rampart_One/RampartOne-Regular.ttf"
+			as="font"
+			type="font/ttf"
+			crossorigin="anonymous"
+		/>
+		<link rel="stylesheet" href="/fonts.css" />
+		<meta
+			name="viewport"
+			content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+		/>
+		<title>Yomiyougu</title>
+		<style>
+			/* Override all fonts globally - loaded before any other styles */
+			*,
+			*::before,
+			*::after {
+				font-family:
+					"Rubik",
+					ui-sans-serif,
+					system-ui,
+					-apple-system,
+					sans-serif !important;
+			}
+			.font-display,
+			.font-display * {
+				font-family: "Rampart One", cursive !important;
+			}
+		</style>
+		%sveltekit.head%
+	</head>
+	<body data-sveltekit-preload-data="hover">
+		<div id="app">%sveltekit.body%</div>
+	</body>
 </html>

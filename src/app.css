@@ -11,166 +11,187 @@
    THEME CONFIGURATION
    ============================================================================ */
 @theme {
-  --font-family-sans: 'Rubik', ui-sans-serif, system-ui, sans-serif;
-  --font-family-display: 'Rampart One', cursive;
-  /* Primary brand color - warm red/coral */
-  --color-primary-50: #fff0f1;
-  --color-primary-100: #ffe4e6;
-  --color-primary-200: #fcd5d8;
-  --color-primary-300: #f7b0b6;
-  --color-primary-400: #f0808a;
-  --color-primary-500: #e44d59;
-  --color-primary-600: #cc2332;
-  --color-primary-700: #b3001b;
-  --color-primary-800: #93061c;
-  --color-primary-900: #7a0919;
+	--font-family-sans: "Rubik", ui-sans-serif, system-ui, sans-serif;
+	--font-family-display: "Rampart One", cursive;
+	/* Primary brand color - warm red/coral */
+	--color-primary-50: #fff0f1;
+	--color-primary-100: #ffe4e6;
+	--color-primary-200: #fcd5d8;
+	--color-primary-300: #f7b0b6;
+	--color-primary-400: #f0808a;
+	--color-primary-500: #e44d59;
+	--color-primary-600: #cc2332;
+	--color-primary-700: #b3001b;
+	--color-primary-800: #93061c;
+	--color-primary-900: #7a0919;
 
-  /* Secondary/accent - emerald green */
-  --color-secondary-50: #effdf5;
-  --color-secondary-100: #d8fbe6;
-  --color-secondary-200: #b4f6d1;
-  --color-secondary-300: #81ebb5;
-  --color-secondary-400: #49d895;
-  --color-secondary-500: #23ce6b;
-  --color-secondary-600: #17a855;
-  --color-secondary-700: #138545;
-  --color-secondary-800: #13693a;
-  --color-secondary-900: #115632;
+	/* Secondary/accent - emerald green */
+	--color-secondary-50: #effdf5;
+	--color-secondary-100: #d8fbe6;
+	--color-secondary-200: #b4f6d1;
+	--color-secondary-300: #81ebb5;
+	--color-secondary-400: #49d895;
+	--color-secondary-500: #23ce6b;
+	--color-secondary-600: #17a855;
+	--color-secondary-700: #138545;
+	--color-secondary-800: #13693a;
+	--color-secondary-900: #115632;
 
-  /* Neutral palette */
-  --color-surface-light: #f8fafc;
-  --color-surface-dark: #1e293b;
-  --color-muted: #64748b;
+	/* Neutral palette */
+	--color-surface-light: #f8fafc;
+	--color-surface-dark: #1e293b;
+	--color-muted: #64748b;
 }
 
 /* ============================================================================
    BASE STYLES
    ============================================================================ */
-html, body, #app, * {
-  font-family: 'Rubik', ui-sans-serif, system-ui, sans-serif !important;
+html,
+body,
+#app,
+* {
+	font-family: "Rubik", ui-sans-serif, system-ui, sans-serif !important;
 }
 
 .font-display {
-  font-family: 'Rampart One', cursive !important;
+	font-family: "Rampart One", cursive !important;
 }
 
-.font-normal, .font-bold, .font-semibold, .font-medium, .font-light, .font-thin, .font-italic {
-  font-family: 'Rubik', ui-sans-serif, system-ui, sans-serif !important;
+.font-normal,
+.font-bold,
+.font-semibold,
+.font-medium,
+.font-light,
+.font-thin,
+.font-italic {
+	font-family: "Rubik", ui-sans-serif, system-ui, sans-serif !important;
 }
 
 @layer base {
-  html,
-  body {
-    @apply h-full w-full overscroll-none;
-    @apply bg-surface-light text-slate-900;
-    @apply dark:bg-surface-dark dark:text-slate-100;
-    @apply antialiased;
-    @apply transition-colors duration-200;
-    position: fixed;
-    width: 100%;
-    height: 100%;
-    overflow: hidden;
-  }
+	html,
+	body {
+		@apply h-full w-full overscroll-none;
+		@apply bg-surface-light text-slate-900;
+		@apply dark:bg-surface-dark dark:text-slate-100;
+		@apply antialiased;
+		@apply transition-colors duration-200;
+		position: fixed;
+		width: 100%;
+		height: 100%;
+		overflow: hidden;
+	}
 
-  #app {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    overflow: hidden;
-  }
+	#app {
+		position: fixed;
+		top: 0;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		overflow: hidden;
+	}
 
-  input[type="search"]::-webkit-search-cancel-button {
-    display: none;
-  }
+	input[type="search"]::-webkit-search-cancel-button {
+		display: none;
+	}
 
-  :focus-visible {
-    @apply outline-2 outline-offset-2 outline-primary-500;
-  }
+	:focus-visible {
+		@apply outline-2 outline-offset-2 outline-primary-500;
+	}
 
-  * {
-    scroll-behavior: smooth;
-  }
+	* {
+		scroll-behavior: smooth;
+	}
 }
 
 /* ============================================================================
    COMPONENT UTILITIES
    ============================================================================ */
 @layer components {
-  .page-container {
-    @apply max-w-7xl mx-auto px-4 py-6;
-    position: relative;
-    contain: layout style;
-  }
+	.page-container {
+		@apply max-w-7xl mx-auto px-4 py-6;
+		position: relative;
+		contain: layout style;
+	}
 
-  .card {
-    @apply bg-white dark:bg-slate-800 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700;
-  }
+	.card {
+		@apply bg-white dark:bg-slate-800 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700;
+	}
 
-  .section-header {
-    @apply text-lg font-semibold text-slate-900 dark:text-white mb-4;
-  }
+	.section-header {
+		@apply text-lg font-semibold text-slate-900 dark:text-white mb-4;
+	}
 
-  .setting-group {
-    @apply space-y-1;
-  }
+	.setting-group {
+		@apply space-y-1;
+	}
 
-  .setting-label {
-    @apply text-sm font-medium text-slate-700 dark:text-slate-300;
-  }
+	.setting-label {
+		@apply text-sm font-medium text-slate-700 dark:text-slate-300;
+	}
 
-  .setting-description {
-    @apply text-xs text-slate-500 dark:text-slate-400;
-  }
+	.setting-description {
+		@apply text-xs text-slate-500 dark:text-slate-400;
+	}
 
-  .color-picker {
-    @apply w-12 h-8 rounded cursor-pointer border border-slate-300 dark:border-slate-600;
-  }
+	.color-picker {
+		@apply w-12 h-8 rounded cursor-pointer border border-slate-300 dark:border-slate-600;
+	}
 
-  input[type="range"] {
-    @apply w-full h-2 rounded-lg appearance-none cursor-pointer;
-    background: linear-gradient(to right, var(--color-primary-600) 0%, var(--color-primary-600) var(--range-progress, 50%), #e5e7eb var(--range-progress, 50%), #e5e7eb 100%);
-  }
+	input[type="range"] {
+		@apply w-full h-2 rounded-lg appearance-none cursor-pointer;
+		background: linear-gradient(
+			to right,
+			var(--color-primary-600) 0%,
+			var(--color-primary-600) var(--range-progress, 50%),
+			#e5e7eb var(--range-progress, 50%),
+			#e5e7eb 100%
+		);
+	}
 
-  input[type="range"]::-webkit-slider-thumb {
-    @apply appearance-none w-4 h-4 rounded-full bg-primary-700 cursor-pointer;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-  }
+	input[type="range"]::-webkit-slider-thumb {
+		@apply appearance-none w-4 h-4 rounded-full bg-primary-700 cursor-pointer;
+		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+	}
 
-  input[type="range"]::-moz-range-thumb {
-    @apply w-4 h-4 rounded-full bg-primary-700 cursor-pointer border-0;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-  }
+	input[type="range"]::-moz-range-thumb {
+		@apply w-4 h-4 rounded-full bg-primary-700 cursor-pointer border-0;
+		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+	}
 
-  .dark input[type="range"] {
-    background: linear-gradient(to right, var(--color-primary-600) 0%, var(--color-primary-600) var(--range-progress, 50%), #374151 var(--range-progress, 50%), #374151 100%);
-  }
+	.dark input[type="range"] {
+		background: linear-gradient(
+			to right,
+			var(--color-primary-600) 0%,
+			var(--color-primary-600) var(--range-progress, 50%),
+			#374151 var(--range-progress, 50%),
+			#374151 100%
+		);
+	}
 
-  .dark input[type="range"]::-webkit-slider-thumb {
-    @apply bg-white;
-  }
+	.dark input[type="range"]::-webkit-slider-thumb {
+		@apply bg-white;
+	}
 
-  .dark input[type="range"]::-moz-range-thumb {
-    @apply bg-white;
-  }
+	.dark input[type="range"]::-moz-range-thumb {
+		@apply bg-white;
+	}
 
-  [role="tooltip"],
-  [data-popper-placement],
-  .dropdown-menu {
-    position: absolute !important;
-  }
+	[role="tooltip"],
+	[data-popper-placement],
+	.dropdown-menu {
+		position: absolute !important;
+	}
 }
 
 /* ============================================================================
    UTILITY OVERRIDES
    ============================================================================ */
 @layer utilities {
-  .scrollbar-hide {
-    -ms-overflow-style: none;
-    scrollbar-width: none;
-  }
-  .scrollbar-hide::-webkit-scrollbar {
-    display: none;
-  }
+	.scrollbar-hide {
+		-ms-overflow-style: none;
+		scrollbar-width: none;
+	}
+	.scrollbar-hide::-webkit-scrollbar {
+		display: none;
+	}
 }
