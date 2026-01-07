@@ -21,7 +21,7 @@ This project was created by a university student as part of an academic project.
 - 📚 Support for CBZ/ZIP and CBR/RAR formats
 - ☁️ Optional cloud sync with Google Drive
 - 🎨 Custom themes and reading modes
-- 📱 Cross-platform: Linux desktop and Android
+- 📱 Cross-platform: Linux and Windows desktop, Android
 - 🔖 Bookmarks and reading progress tracking
 - 📂 Library organization with collections
 
