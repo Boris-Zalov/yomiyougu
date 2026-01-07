@@ -12,7 +12,7 @@
 
 ## About
 
-**Yomiyougu** (読み用具 - "reading tool") is an open-source manga/comic reader designed for desktop and Android. It supports popular formats like CBZ, CBR, PDF, and EPUB, with features like cloud sync via Google Drive, customizable reading modes, and a clean, modern interface.
+**Yomiyougu** (読み用具 - "reading tool") is an open-source manga/comic reader designed for desktop and Android. It supports popular formats like CBZ/ZIP, CBR/RAR, with features like cloud sync via Google Drive, customizable reading modes, and a clean, modern interface.
 
 This project was created by a university student as part of an academic project.
 
