@@ -61,7 +61,7 @@ jobs:
           cat keystore.properties
 
       - name: Build Android APK
-        run: pnpm tauri android build --apk
+        run: pnpm tauri android build --apk true
         env:
           NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
           VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
